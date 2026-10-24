@@ -27,7 +27,7 @@ set_property(GLOBAL PROPERTY _CMAKE_FindGit_GIT_EXECUTABLE_VERSION
 
 include(ExternalProject)
 ExternalProject_Add(tinygltf-populate
-                     "UPDATE_DISCONNECTED" "False" "GIT_REPOSITORY" "https://github.com/syoyo/tinygltf.git" "EXTERNALPROJECT_INTERNAL_ARGUMENT_SEPARATOR" "GIT_TAG" "release" "GIT_SHALLOW" "TRUE"
+                     "UPDATE_DISCONNECTED" "False" "GIT_REPOSITORY" "https://github.com/syoyo/tinygltf.git" "EXTERNALPROJECT_INTERNAL_ARGUMENT_SEPARATOR" "GIT_TAG" "v2.9.5" "GIT_SHALLOW" "TRUE"
                     SOURCE_DIR          "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src"
                     BINARY_DIR          "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-build"
                     CONFIGURE_COMMAND   ""

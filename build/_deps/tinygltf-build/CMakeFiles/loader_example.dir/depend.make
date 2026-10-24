@@ -1,2 +1,2 @@
-# Empty dependencies file for tester_v3_json_c.
+# Empty dependencies file for loader_example.
 # This may be replaced when dependencies are built.

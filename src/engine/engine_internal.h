@@ -44,6 +44,15 @@ struct GpuContext {
     // Sampler for the composite pass to sample G-buffer textures.
     WGPUSampler gbuf_sampler = nullptr;
 
+    // HZB (Hi-Z) depth pyramid. Mip 0 = converted depth buffer (R32Float),
+    // mips 1..N = hierarchically downsampled minimum. Used by SSR/SSAO/SSGI.
+    WGPUTexture     hzb_texture = nullptr;
+    std::vector<WGPUTextureView> hzb_mip_views;      // all mips, for sampling
+    std::vector<WGPUTextureView> hzb_storage_views;  // per-mip, for storage writes
+    uint32_t        hzb_mip_count = 0;
+    uint32_t        hzb_width = 0;
+    uint32_t        hzb_height = 0;
+
     // Per-frame uniforms (MVP + model matrix).
     WGPUBuffer        uniform_buffer    = nullptr;
     WGPUBindGroupLayout uniform_bgl     = nullptr;
@@ -59,14 +68,30 @@ struct GpuContext {
     void destroy();
 };
 
+// A mesh owns its GPU buffers. One glTF primitive = one Mesh.
+struct Mesh {
+    WGPUBuffer vertex_buffer = nullptr;
+    WGPUBuffer index_buffer  = nullptr;
+    uint32_t   vertex_count  = 0;
+    uint32_t   index_count   = 0;
+    glm::vec3  aabb_min      = glm::vec3(0.0f);
+    glm::vec3  aabb_max      = glm::vec3(0.0f);
+};
+
+// A scene object references a mesh and carries its world transform.
+// Multiple objects can reference the same mesh (instancing at the object level,
+// not yet at the draw level).
 struct SceneObject {
-    std::string name;
-    glm::mat4   transform = glm::mat4(1.0f);
-    // Future: mesh handle, material handle, physics body handle.
+    uint32_t  mesh_index = 0;
+    glm::mat4 transform  = glm::mat4(1.0f);
 };
 
 struct Scene {
+    std::vector<Mesh>        meshes;
     std::vector<SceneObject> objects;
+    glm::vec3                aabb_min = glm::vec3(0.0f);
+    glm::vec3                aabb_max = glm::vec3(0.0f);
+    bool                     loaded   = false;
 };
 
 class Engine {
@@ -122,6 +147,15 @@ private:
     bool                composite_pipeline_ready_ = false;
     WGPUBindGroupLayout composite_bgl_ = nullptr;
     WGPUBindGroup       composite_bg_  = nullptr;
+
+    // HZB compute pipelines and bind groups.
+    WGPUComputePipeline hzb_convert_pipeline_  = nullptr;
+    WGPUComputePipeline hzb_downsample_pipeline_ = nullptr;
+    bool                hzb_pipelines_ready_   = false;
+    WGPUBindGroupLayout hzb_convert_bgl_       = nullptr;
+    WGPUBindGroupLayout hzb_downsample_bgl_    = nullptr;
+    WGPUBindGroup       hzb_convert_bg_        = nullptr;  // depth -> mip0
+    std::vector<WGPUBindGroup> hzb_downsample_bgs_;        // mipN-1 -> mipN
 
     // Offscreen render target (Path B: no swapchain in the loop).
     WGPUTexture offscreen_color_  = nullptr;

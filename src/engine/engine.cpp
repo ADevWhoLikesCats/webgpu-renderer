@@ -216,7 +216,8 @@ bool Engine::init(const char* app_name,
         td.format        = WGPUTextureFormat_Depth32Float;
         td.mipLevelCount = 1;
         td.sampleCount   = 1;
-        td.usage         = WGPUTextureUsage_RenderAttachment;
+        td.usage         = WGPUTextureUsage_RenderAttachment |
+                            WGPUTextureUsage_TextureBinding;
         gpu_.depth_texture = wgpuDeviceCreateTexture(gpu_.device, &td);
         if (!gpu_.depth_texture) {
             err = "depth texture creation failed";
@@ -322,6 +323,104 @@ bool Engine::init(const char* app_name,
         gpu_.gbuf_sampler = wgpuDeviceCreateSampler(gpu_.device, &sd);
         if (!gpu_.gbuf_sampler) {
             err = "gbuf sampler creation failed";
+            shutdown();
+            return false;
+        }
+    }
+
+    // ---- HZB texture (mipmapped R32Float, downsampled min-depth pyramid) ----
+    {
+        uint32_t mips = 1;
+        uint32_t max_dim = width > height ? width : height;
+        while (max_dim > 1) { max_dim >>= 1; ++mips; }
+        gpu_.hzb_mip_count = mips;
+        gpu_.hzb_width     = width;
+        gpu_.hzb_height    = height;
+
+        WGPUTextureDescriptor td = {};
+        td.dimension     = WGPUTextureDimension_2D;
+        td.size          = { width, height, 1 };
+        td.format        = WGPUTextureFormat_R32Float;
+        td.mipLevelCount = mips;
+        td.sampleCount   = 1;
+        td.usage         = WGPUTextureUsage_StorageBinding |
+                           WGPUTextureUsage_TextureBinding |
+                           WGPUTextureUsage_CopySrc;
+        gpu_.hzb_texture = wgpuDeviceCreateTexture(gpu_.device, &td);
+        if (!gpu_.hzb_texture) {
+            err = "HZB texture creation failed";
+            shutdown();
+            return false;
+        }
+
+        gpu_.hzb_mip_views.resize(mips, nullptr);
+        gpu_.hzb_storage_views.resize(mips, nullptr);
+        for (uint32_t i = 0; i < mips; ++i) {
+            WGPUTextureViewDescriptor vd = {};
+            vd.format          = WGPUTextureFormat_R32Float;
+            vd.dimension       = WGPUTextureViewDimension_2D;
+            vd.baseMipLevel    = i;
+            vd.mipLevelCount   = 1;
+            vd.baseArrayLayer  = 0;
+            vd.arrayLayerCount = 1;
+            vd.aspect          = WGPUTextureAspect_All;
+            gpu_.hzb_mip_views[i]     = wgpuTextureCreateView(gpu_.hzb_texture, &vd);
+            gpu_.hzb_storage_views[i] = wgpuTextureCreateView(gpu_.hzb_texture, &vd);
+            if (!gpu_.hzb_mip_views[i] || !gpu_.hzb_storage_views[i]) {
+                err = "HZB mip view creation failed";
+                shutdown();
+                return false;
+            }
+        }
+        std::fprintf(stderr, "[engine] HZB texture created (%ux%u, R32Float, %u mips)\n",
+                     width, height, mips);
+    }
+
+    // ---- HZB convert BGL: depth input + R32Float storage output ----
+    {
+        WGPUBindGroupLayoutEntry e[2] = {};
+        e[0].binding = 0;
+        e[0].visibility = WGPUShaderStage_Compute;
+        e[0].texture.sampleType = WGPUTextureSampleType_Depth;
+        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        e[1].binding = 1;
+        e[1].visibility = WGPUShaderStage_Compute;
+        e[1].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
+        e[1].storageTexture.format = WGPUTextureFormat_R32Float;
+        e[1].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
+
+        WGPUBindGroupLayoutDescriptor bgl = {};
+        bgl.entryCount = 2;
+        bgl.entries    = e;
+        hzb_convert_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
+        if (!hzb_convert_bgl_) {
+            err = "HZB convert BGL creation failed";
+            shutdown();
+            return false;
+        }
+    }
+
+    // ---- HZB downsample BGL: R32Float input + R32Float storage output ----
+    {
+        WGPUBindGroupLayoutEntry e[2] = {};
+        e[0].binding = 0;
+        e[0].visibility = WGPUShaderStage_Compute;
+        e[0].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        e[1].binding = 1;
+        e[1].visibility = WGPUShaderStage_Compute;
+        e[1].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
+        e[1].storageTexture.format = WGPUTextureFormat_R32Float;
+        e[1].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
+
+        WGPUBindGroupLayoutDescriptor bgl = {};
+        bgl.entryCount = 2;
+        bgl.entries    = e;
+        hzb_downsample_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
+        if (!hzb_downsample_bgl_) {
+            err = "HZB downsample BGL creation failed";
             shutdown();
             return false;
         }
@@ -836,6 +935,90 @@ static WGPURenderPipeline make_composite_pipeline(
 #include <vector>
 #include <cstdio>
 
+static WGPUComputePipeline make_hzb_convert_pipeline(
+    WGPUDevice device, WGPUBindGroupLayout bgl)
+{
+    const char* wgsl = R"(
+        @group(0) @binding(0) var src_depth : texture_depth_2d;
+        @group(0) @binding(1) var dst       : texture_storage_2d<r32float, write>;
+
+        @compute @workgroup_size(8, 8, 1)
+        fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
+            let dims = textureDimensions(src_depth);
+            if (gid.x >= dims.x || gid.y >= dims.y) { return; }
+            let d = textureLoad(src_depth, vec2<i32>(gid.xy), 0);
+            textureStore(dst, vec2<i32>(gid.xy), vec4<f32>(d, 0.0, 0.0, 0.0));
+        }
+    )";
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code.data = wgsl; src.code.length = strlen(wgsl);
+    WGPUShaderModuleDescriptor smd = {}; smd.nextInChain = &src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) return nullptr;
+
+    WGPUPipelineLayoutDescriptor pld = {};
+    pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pld);
+
+    WGPUComputePipelineDescriptor cpd = {};
+    cpd.layout = pl;
+    cpd.compute.module = mod;
+    cpd.compute.entryPoint.data = "cs_main";
+    cpd.compute.entryPoint.length = 7;
+
+    WGPUComputePipeline pipe = wgpuDeviceCreateComputePipeline(device, &cpd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] HZB convert pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
+static WGPUComputePipeline make_hzb_downsample_pipeline(
+    WGPUDevice device, WGPUBindGroupLayout bgl)
+{
+    const char* wgsl = R"(
+        @group(0) @binding(0) var src : texture_2d<f32>;
+        @group(0) @binding(1) var dst : texture_storage_2d<r32float, write>;
+
+        @compute @workgroup_size(8, 8, 1)
+        fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
+            let dims = textureDimensions(dst);
+            if (gid.x >= dims.x || gid.y >= dims.y) { return; }
+            let s = vec2<i32>(gid.xy) * 2;
+            let sd = vec2<i32>(textureDimensions(src));
+            let t00 = textureLoad(src, min(s + vec2<i32>(0, 0), sd - 1), 0).r;
+            let t10 = textureLoad(src, min(s + vec2<i32>(1, 0), sd - 1), 0).r;
+            let t01 = textureLoad(src, min(s + vec2<i32>(0, 1), sd - 1), 0).r;
+            let t11 = textureLoad(src, min(s + vec2<i32>(1, 1), sd - 1), 0).r;
+            let m = min(min(t00, t10), min(t01, t11));
+            textureStore(dst, vec2<i32>(gid.xy), vec4<f32>(m, 0.0, 0.0, 0.0));
+        }
+    )";
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code.data = wgsl; src.code.length = strlen(wgsl);
+    WGPUShaderModuleDescriptor smd = {}; smd.nextInChain = &src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) return nullptr;
+
+    WGPUPipelineLayoutDescriptor pld = {};
+    pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pld);
+
+    WGPUComputePipelineDescriptor cpd = {};
+    cpd.layout = pl;
+    cpd.compute.module = mod;
+    cpd.compute.entryPoint.data = "cs_main";
+    cpd.compute.entryPoint.length = 7;
+
+    WGPUComputePipeline pipe = wgpuDeviceCreateComputePipeline(device, &cpd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] HZB downsample pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
 void Engine::begin_frame() {
     if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
@@ -853,6 +1036,42 @@ void Engine::begin_frame() {
         if (!composite_pipeline_) return;
     }
     if (!geometry_pipeline_ || !composite_pipeline_) return;
+
+    // Lazy HZB pipelines + bind groups.
+    if (!hzb_pipelines_ready_ && hzb_convert_bgl_ && hzb_downsample_bgl_) {
+        hzb_convert_pipeline_    = make_hzb_convert_pipeline(gpu_.device, hzb_convert_bgl_);
+        hzb_downsample_pipeline_ = make_hzb_downsample_pipeline(gpu_.device, hzb_downsample_bgl_);
+        if (hzb_convert_pipeline_ && hzb_downsample_pipeline_) {
+            // Convert BG: depth_view -> hzb_mip_views[0] storage
+            {
+                WGPUBindGroupEntry be[2] = {};
+                be[0].binding     = 0;
+                be[0].textureView = gpu_.depth_view;
+                be[1].binding     = 1;
+                be[1].textureView = gpu_.hzb_storage_views[0];
+                WGPUBindGroupDescriptor bgd = {};
+                bgd.layout = hzb_convert_bgl_;
+                bgd.entryCount = 2;
+                bgd.entries = be;
+                hzb_convert_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+            }
+            // Downsample BGs: mipN-1 (sampled) -> mipN (storage)
+            hzb_downsample_bgs_.resize(gpu_.hzb_mip_count, nullptr);
+            for (uint32_t i = 1; i < gpu_.hzb_mip_count; ++i) {
+                WGPUBindGroupEntry be[2] = {};
+                be[0].binding     = 0;
+                be[0].textureView = gpu_.hzb_mip_views[i - 1];
+                be[1].binding     = 1;
+                be[1].textureView = gpu_.hzb_storage_views[i];
+                WGPUBindGroupDescriptor bgd = {};
+                bgd.layout = hzb_downsample_bgl_;
+                bgd.entryCount = 2;
+                bgd.entries = be;
+                hzb_downsample_bgs_[i] = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+            }
+            hzb_pipelines_ready_ = true;
+        }
+    }
 
     // ---- MVP ----
     float t = (float)SDL_GetTicks() / 1000.0f;
@@ -937,6 +1156,39 @@ void Engine::begin_frame() {
             wgpuRenderPassEncoderDrawIndexed(rp, 36, 1, 0, 0, 0);
             wgpuRenderPassEncoderEnd(rp);
             wgpuRenderPassEncoderRelease(rp);
+        });
+
+    // ---- HZB pass: depth -> mipmapped depth pyramid (compute) ----
+    fg_.add_pass("hzb_build",
+        /*reads=*/  { r_depth },
+        /*writes=*/ { },  // HZB isn't tracked as an fg resource yet; no downstream pass needs it this frame
+        [&](WGPUCommandEncoder enc) {
+            if (!hzb_pipelines_ready_ || !hzb_convert_bg_) return;
+            // Convert: depth -> hzb mip 0
+            {
+                WGPUComputePassDescriptor cpd = {};
+                WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(enc, &cpd);
+                wgpuComputePassEncoderSetPipeline(cp, hzb_convert_pipeline_);
+                wgpuComputePassEncoderSetBindGroup(cp, 0, hzb_convert_bg_, 0, nullptr);
+                wgpuComputePassEncoderDispatchWorkgroups(
+                    cp, (gpu_.hzb_width + 7) / 8, (gpu_.hzb_height + 7) / 8, 1);
+                wgpuComputePassEncoderEnd(cp);
+                wgpuComputePassEncoderRelease(cp);
+            }
+            // Downsample: mip N-1 -> mip N
+            for (uint32_t i = 1; i < gpu_.hzb_mip_count; ++i) {
+                uint32_t w = gpu_.hzb_width  >> i;
+                uint32_t h = gpu_.hzb_height >> i;
+                if (w == 0) w = 1;
+                if (h == 0) h = 1;
+                WGPUComputePassDescriptor cpd = {};
+                WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(enc, &cpd);
+                wgpuComputePassEncoderSetPipeline(cp, hzb_downsample_pipeline_);
+                wgpuComputePassEncoderSetBindGroup(cp, 0, hzb_downsample_bgs_[i], 0, nullptr);
+                wgpuComputePassEncoderDispatchWorkgroups(cp, (w + 7) / 8, (h + 7) / 8, 1);
+                wgpuComputePassEncoderEnd(cp);
+                wgpuComputePassEncoderRelease(cp);
+            }
         });
 
     // ---- Composite pass: reads G-buffer, writes offscreen color ----

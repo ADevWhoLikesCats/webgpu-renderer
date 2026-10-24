@@ -8,8 +8,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src/tests/tester_v3_json_c.c" "_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/tests/tester_v3_json_c.c.o" "gcc" "_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/tests/tester_v3_json_c.c.o.d"
-  "" "_deps/tinygltf-build/tester_v3_json_c" "gcc" "_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/link.d"
+  "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src/loader_example.cc" "_deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o" "gcc" "_deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o.d"
+  "" "_deps/tinygltf-build/loader_example" "gcc" "_deps/tinygltf-build/CMakeFiles/loader_example.dir/link.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

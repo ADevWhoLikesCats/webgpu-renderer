@@ -33,6 +33,7 @@ set(CMAKE_MAKEFILE_DEPENDS
   "/usr/share/cmake-4.2/Modules/CMakeGenericSystem.cmake"
   "/usr/share/cmake-4.2/Modules/CMakeInitializeConfigs.cmake"
   "/usr/share/cmake-4.2/Modules/CMakeLanguageInformation.cmake"
+  "/usr/share/cmake-4.2/Modules/CMakePackageConfigHelpers.cmake"
   "/usr/share/cmake-4.2/Modules/CMakeSystemSpecificInformation.cmake"
   "/usr/share/cmake-4.2/Modules/CMakeSystemSpecificInitialize.cmake"
   "/usr/share/cmake-4.2/Modules/CheckCSourceCompiles.cmake"
@@ -73,6 +74,7 @@ set(CMAKE_MAKEFILE_DEPENDS
   "/usr/share/cmake-4.2/Modules/Platform/Linux-Initialize.cmake"
   "/usr/share/cmake-4.2/Modules/Platform/Linux.cmake"
   "/usr/share/cmake-4.2/Modules/Platform/UnixPaths.cmake"
+  "/usr/share/cmake-4.2/Modules/WriteBasicConfigVersionFile.cmake"
   )
 
 # The corresponding makefile is:
@@ -95,9 +97,6 @@ set(CMAKE_MAKEFILE_PRODUCTS
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/photonix.dir/DependInfo.cmake"
   "CMakeFiles/engine_demo.dir/DependInfo.cmake"
-  "_deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/DependInfo.cmake"
-  "_deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/DependInfo.cmake"
-  "_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/DependInfo.cmake"
-  "_deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/DependInfo.cmake"
+  "_deps/tinygltf-build/CMakeFiles/loader_example.dir/DependInfo.cmake"
   "_deps/glm-build/glm/CMakeFiles/glm.dir/DependInfo.cmake"
   )

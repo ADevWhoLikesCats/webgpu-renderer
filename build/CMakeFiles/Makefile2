@@ -130,17 +130,11 @@ _deps/glm-build/glm/clean: _deps/glm-build/glm/CMakeFiles/glm.dir/clean
 # Directory level rules for directory _deps/tinygltf-build
 
 # Recursive "all" directory target.
-_deps/tinygltf-build/all: _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/all
-_deps/tinygltf-build/all: _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/all
-_deps/tinygltf-build/all: _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/all
-_deps/tinygltf-build/all: _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/all
+_deps/tinygltf-build/all: _deps/tinygltf-build/CMakeFiles/loader_example.dir/all
 .PHONY : _deps/tinygltf-build/all
 
 # Recursive "codegen" directory target.
-_deps/tinygltf-build/codegen: _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/codegen
-_deps/tinygltf-build/codegen: _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/codegen
-_deps/tinygltf-build/codegen: _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/codegen
-_deps/tinygltf-build/codegen: _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/codegen
+_deps/tinygltf-build/codegen: _deps/tinygltf-build/CMakeFiles/loader_example.dir/codegen
 .PHONY : _deps/tinygltf-build/codegen
 
 # Recursive "preinstall" directory target.
@@ -148,10 +142,7 @@ _deps/tinygltf-build/preinstall:
 .PHONY : _deps/tinygltf-build/preinstall
 
 # Recursive "clean" directory target.
-_deps/tinygltf-build/clean: _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/clean
-_deps/tinygltf-build/clean: _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/clean
-_deps/tinygltf-build/clean: _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/clean
-_deps/tinygltf-build/clean: _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/clean
+_deps/tinygltf-build/clean: _deps/tinygltf-build/CMakeFiles/loader_example.dir/clean
 .PHONY : _deps/tinygltf-build/clean
 
 #=============================================================================
@@ -161,7 +152,7 @@ _deps/tinygltf-build/clean: _deps/tinygltf-build/CMakeFiles/tester_v3_freestandi
 CMakeFiles/photonix.dir/all: _deps/glm-build/glm/CMakeFiles/glm.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=5,6,7,8,9 "Built target photonix"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=7,8,9,10,11 "Built target photonix"
 .PHONY : CMakeFiles/photonix.dir/all
 
 # Build rule for subdir invocation for target.
@@ -178,7 +169,7 @@ photonix: CMakeFiles/photonix.dir/rule
 # codegen rule for target.
 CMakeFiles/photonix.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=5,6,7,8,9 "Finished codegen for target photonix"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=7,8,9,10,11 "Finished codegen for target photonix"
 .PHONY : CMakeFiles/photonix.dir/codegen
 
 # clean rule for target.
@@ -190,8 +181,8 @@ CMakeFiles/photonix.dir/clean:
 # Target rules for target CMakeFiles/engine_demo.dir
 
 # All Build rule for target.
-CMakeFiles/engine_demo.dir/all: CMakeFiles/photonix.dir/all
 CMakeFiles/engine_demo.dir/all: _deps/glm-build/glm/CMakeFiles/glm.dir/all
+CMakeFiles/engine_demo.dir/all: CMakeFiles/photonix.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/engine_demo.dir/build.make CMakeFiles/engine_demo.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/engine_demo.dir/build.make CMakeFiles/engine_demo.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=1,2 "Built target engine_demo"
@@ -220,132 +211,36 @@ CMakeFiles/engine_demo.dir/clean:
 .PHONY : CMakeFiles/engine_demo.dir/clean
 
 #=============================================================================
-# Target rules for target _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir
+# Target rules for target _deps/tinygltf-build/CMakeFiles/loader_example.dir
 
 # All Build rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/all:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/depend
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=10,11,12 "Built target tester_v3_c"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/all
+_deps/tinygltf-build/CMakeFiles/loader_example.dir/all:
+	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/depend
+	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=5,6 "Built target loader_example"
+.PHONY : _deps/tinygltf-build/CMakeFiles/loader_example.dir/all
 
 # Build rule for subdir invocation for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 3
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 0
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/rule
-
-# Convenience name for target.
-tester_v3_c: _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/rule
-.PHONY : tester_v3_c
-
-# codegen rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/codegen:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=10,11,12 "Finished codegen for target tester_v3_c"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/codegen
-
-# clean rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/clean:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/clean
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/clean
-
-#=============================================================================
-# Target rules for target _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir
-
-# All Build rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/all:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/depend
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=13,14,15 "Built target tester_v3_c_v1port"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/all
-
-# Build rule for subdir invocation for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 3
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 0
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/rule
-
-# Convenience name for target.
-tester_v3_c_v1port: _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/rule
-.PHONY : tester_v3_c_v1port
-
-# codegen rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/codegen:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=13,14,15 "Finished codegen for target tester_v3_c_v1port"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/codegen
-
-# clean rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/clean:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/clean
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/clean
-
-#=============================================================================
-# Target rules for target _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir
-
-# All Build rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/all:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/depend
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=18,19 "Built target tester_v3_json_c"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/all
-
-# Build rule for subdir invocation for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/rule: cmake_check_build_system
+_deps/tinygltf-build/CMakeFiles/loader_example.dir/rule: cmake_check_build_system
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 2
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/loader_example.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 0
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/rule
+.PHONY : _deps/tinygltf-build/CMakeFiles/loader_example.dir/rule
 
 # Convenience name for target.
-tester_v3_json_c: _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/rule
-.PHONY : tester_v3_json_c
+loader_example: _deps/tinygltf-build/CMakeFiles/loader_example.dir/rule
+.PHONY : loader_example
 
 # codegen rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/codegen:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=18,19 "Finished codegen for target tester_v3_json_c"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/codegen
+_deps/tinygltf-build/CMakeFiles/loader_example.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=5,6 "Finished codegen for target loader_example"
+.PHONY : _deps/tinygltf-build/CMakeFiles/loader_example.dir/codegen
 
 # clean rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/clean:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/clean
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/clean
-
-#=============================================================================
-# Target rules for target _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir
-
-# All Build rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/all:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/depend
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=16,17 "Built target tester_v3_freestanding"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/all
-
-# Build rule for subdir invocation for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 2
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 0
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/rule
-
-# Convenience name for target.
-tester_v3_freestanding: _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/rule
-.PHONY : tester_v3_freestanding
-
-# codegen rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/codegen:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=16,17 "Finished codegen for target tester_v3_freestanding"
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/codegen
-
-# clean rule for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/clean:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/clean
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/clean
+_deps/tinygltf-build/CMakeFiles/loader_example.dir/clean:
+	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/clean
+.PHONY : _deps/tinygltf-build/CMakeFiles/loader_example.dir/clean
 
 #=============================================================================
 # Target rules for target _deps/glm-build/glm/CMakeFiles/glm.dir

@@ -85,51 +85,6 @@ rebuild_cache:
 rebuild_cache/fast: rebuild_cache
 .PHONY : rebuild_cache/fast
 
-# Special rule for the target list_install_components
-list_install_components:
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Available install components are: \"Unspecified\""
-.PHONY : list_install_components
-
-# Special rule for the target list_install_components
-list_install_components/fast: list_install_components
-.PHONY : list_install_components/fast
-
-# Special rule for the target install
-install: preinstall
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
-	/usr/bin/cmake -P cmake_install.cmake
-.PHONY : install
-
-# Special rule for the target install
-install/fast: preinstall/fast
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
-	/usr/bin/cmake -P cmake_install.cmake
-.PHONY : install/fast
-
-# Special rule for the target install/local
-install/local: preinstall
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
-	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
-.PHONY : install/local
-
-# Special rule for the target install/local
-install/local/fast: preinstall/fast
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
-	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
-.PHONY : install/local/fast
-
-# Special rule for the target install/strip
-install/strip: preinstall
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
-	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
-.PHONY : install/strip
-
-# Special rule for the target install/strip
-install/strip/fast: preinstall/fast
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
-	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
-.PHONY : install/strip/fast
-
 # The main all target
 all: cmake_check_build_system
 	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-build//CMakeFiles/progress.marks
@@ -162,183 +117,42 @@ depend:
 .PHONY : depend
 
 # Convenience name for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/rule:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/rule
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/rule
+_deps/tinygltf-build/CMakeFiles/loader_example.dir/rule:
+	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/loader_example.dir/rule
+.PHONY : _deps/tinygltf-build/CMakeFiles/loader_example.dir/rule
 
 # Convenience name for target.
-tester_v3_c: _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/rule
-.PHONY : tester_v3_c
+loader_example: _deps/tinygltf-build/CMakeFiles/loader_example.dir/rule
+.PHONY : loader_example
 
 # fast build rule for target.
-tester_v3_c/fast:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build
-.PHONY : tester_v3_c/fast
+loader_example/fast:
+	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/build
+.PHONY : loader_example/fast
 
-# Convenience name for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/rule:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/rule
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/rule
-
-# Convenience name for target.
-tester_v3_c_v1port: _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/rule
-.PHONY : tester_v3_c_v1port
-
-# fast build rule for target.
-tester_v3_c_v1port/fast:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build
-.PHONY : tester_v3_c_v1port/fast
-
-# Convenience name for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/rule:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/rule
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/rule
-
-# Convenience name for target.
-tester_v3_json_c: _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/rule
-.PHONY : tester_v3_json_c
-
-# fast build rule for target.
-tester_v3_json_c/fast:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build
-.PHONY : tester_v3_json_c/fast
-
-# Convenience name for target.
-_deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/rule:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/rule
-.PHONY : _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/rule
-
-# Convenience name for target.
-tester_v3_freestanding: _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/rule
-.PHONY : tester_v3_freestanding
-
-# fast build rule for target.
-tester_v3_freestanding/fast:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build
-.PHONY : tester_v3_freestanding/fast
-
-tests/tester_v3_c.o: tests/tester_v3_c.c.o
-.PHONY : tests/tester_v3_c.o
+loader_example.o: loader_example.cc.o
+.PHONY : loader_example.o
 
 # target to build an object file
-tests/tester_v3_c.c.o:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/tests/tester_v3_c.c.o
-.PHONY : tests/tester_v3_c.c.o
+loader_example.cc.o:
+	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o
+.PHONY : loader_example.cc.o
 
-tests/tester_v3_c.i: tests/tester_v3_c.c.i
-.PHONY : tests/tester_v3_c.i
-
-# target to preprocess a source file
-tests/tester_v3_c.c.i:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/tests/tester_v3_c.c.i
-.PHONY : tests/tester_v3_c.c.i
-
-tests/tester_v3_c.s: tests/tester_v3_c.c.s
-.PHONY : tests/tester_v3_c.s
-
-# target to generate assembly for a file
-tests/tester_v3_c.c.s:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/tests/tester_v3_c.c.s
-.PHONY : tests/tester_v3_c.c.s
-
-tests/tester_v3_c_v1port.o: tests/tester_v3_c_v1port.c.o
-.PHONY : tests/tester_v3_c_v1port.o
-
-# target to build an object file
-tests/tester_v3_c_v1port.c.o:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/tests/tester_v3_c_v1port.c.o
-.PHONY : tests/tester_v3_c_v1port.c.o
-
-tests/tester_v3_c_v1port.i: tests/tester_v3_c_v1port.c.i
-.PHONY : tests/tester_v3_c_v1port.i
+loader_example.i: loader_example.cc.i
+.PHONY : loader_example.i
 
 # target to preprocess a source file
-tests/tester_v3_c_v1port.c.i:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/tests/tester_v3_c_v1port.c.i
-.PHONY : tests/tester_v3_c_v1port.c.i
+loader_example.cc.i:
+	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.i
+.PHONY : loader_example.cc.i
 
-tests/tester_v3_c_v1port.s: tests/tester_v3_c_v1port.c.s
-.PHONY : tests/tester_v3_c_v1port.s
-
-# target to generate assembly for a file
-tests/tester_v3_c_v1port.c.s:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/tests/tester_v3_c_v1port.c.s
-.PHONY : tests/tester_v3_c_v1port.c.s
-
-tests/tester_v3_freestanding.o: tests/tester_v3_freestanding.c.o
-.PHONY : tests/tester_v3_freestanding.o
-
-# target to build an object file
-tests/tester_v3_freestanding.c.o:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/tests/tester_v3_freestanding.c.o
-.PHONY : tests/tester_v3_freestanding.c.o
-
-tests/tester_v3_freestanding.i: tests/tester_v3_freestanding.c.i
-.PHONY : tests/tester_v3_freestanding.i
-
-# target to preprocess a source file
-tests/tester_v3_freestanding.c.i:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/tests/tester_v3_freestanding.c.i
-.PHONY : tests/tester_v3_freestanding.c.i
-
-tests/tester_v3_freestanding.s: tests/tester_v3_freestanding.c.s
-.PHONY : tests/tester_v3_freestanding.s
+loader_example.s: loader_example.cc.s
+.PHONY : loader_example.s
 
 # target to generate assembly for a file
-tests/tester_v3_freestanding.c.s:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/tests/tester_v3_freestanding.c.s
-.PHONY : tests/tester_v3_freestanding.c.s
-
-tests/tester_v3_json_c.o: tests/tester_v3_json_c.c.o
-.PHONY : tests/tester_v3_json_c.o
-
-# target to build an object file
-tests/tester_v3_json_c.c.o:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/tests/tester_v3_json_c.c.o
-.PHONY : tests/tester_v3_json_c.c.o
-
-tests/tester_v3_json_c.i: tests/tester_v3_json_c.c.i
-.PHONY : tests/tester_v3_json_c.i
-
-# target to preprocess a source file
-tests/tester_v3_json_c.c.i:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/tests/tester_v3_json_c.c.i
-.PHONY : tests/tester_v3_json_c.c.i
-
-tests/tester_v3_json_c.s: tests/tester_v3_json_c.c.s
-.PHONY : tests/tester_v3_json_c.s
-
-# target to generate assembly for a file
-tests/tester_v3_json_c.c.s:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/tests/tester_v3_json_c.c.s
-.PHONY : tests/tester_v3_json_c.c.s
-
-tiny_gltf_v3.o: tiny_gltf_v3.c.o
-.PHONY : tiny_gltf_v3.o
-
-# target to build an object file
-tiny_gltf_v3.c.o:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/tiny_gltf_v3.c.o
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/tiny_gltf_v3.c.o
-.PHONY : tiny_gltf_v3.c.o
-
-tiny_gltf_v3.i: tiny_gltf_v3.c.i
-.PHONY : tiny_gltf_v3.i
-
-# target to preprocess a source file
-tiny_gltf_v3.c.i:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/tiny_gltf_v3.c.i
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/tiny_gltf_v3.c.i
-.PHONY : tiny_gltf_v3.c.i
-
-tiny_gltf_v3.s: tiny_gltf_v3.c.s
-.PHONY : tiny_gltf_v3.s
-
-# target to generate assembly for a file
-tiny_gltf_v3.c.s:
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/tiny_gltf_v3.c.s
-	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/tiny_gltf_v3.c.s
-.PHONY : tiny_gltf_v3.c.s
+loader_example.cc.s:
+	cd /home/hrishikesh/Downloads/photonix-rewrite/build && $(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.s
+.PHONY : loader_example.cc.s
 
 # Help Target
 help:
@@ -347,30 +161,11 @@ help:
 	@echo "... clean"
 	@echo "... depend"
 	@echo "... edit_cache"
-	@echo "... install"
-	@echo "... install/local"
-	@echo "... install/strip"
-	@echo "... list_install_components"
 	@echo "... rebuild_cache"
-	@echo "... tester_v3_c"
-	@echo "... tester_v3_c_v1port"
-	@echo "... tester_v3_freestanding"
-	@echo "... tester_v3_json_c"
-	@echo "... tests/tester_v3_c.o"
-	@echo "... tests/tester_v3_c.i"
-	@echo "... tests/tester_v3_c.s"
-	@echo "... tests/tester_v3_c_v1port.o"
-	@echo "... tests/tester_v3_c_v1port.i"
-	@echo "... tests/tester_v3_c_v1port.s"
-	@echo "... tests/tester_v3_freestanding.o"
-	@echo "... tests/tester_v3_freestanding.i"
-	@echo "... tests/tester_v3_freestanding.s"
-	@echo "... tests/tester_v3_json_c.o"
-	@echo "... tests/tester_v3_json_c.i"
-	@echo "... tests/tester_v3_json_c.s"
-	@echo "... tiny_gltf_v3.o"
-	@echo "... tiny_gltf_v3.i"
-	@echo "... tiny_gltf_v3.s"
+	@echo "... loader_example"
+	@echo "... loader_example.o"
+	@echo "... loader_example.i"
+	@echo "... loader_example.s"
 .PHONY : help
 
 

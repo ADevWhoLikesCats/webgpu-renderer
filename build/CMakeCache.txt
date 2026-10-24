@@ -422,9 +422,28 @@ TINYGLTF3_BUILD_TESTS:BOOL=ON
 //Install tinygltf v3 files during install step
 TINYGLTF3_INSTALL:BOOL=ON
 
+//Build glTF builder example
+TINYGLTF_BUILD_BUILDER_EXAMPLE:BOOL=OFF
+
+//Build GL exampels(requires glfw, OpenGL, etc)
+TINYGLTF_BUILD_GL_EXAMPLES:BOOL=OFF
+
+//Build loader_example(load glTF and dump infos)
+TINYGLTF_BUILD_LOADER_EXAMPLE:BOOL=ON
+
+//Build validator exampe
+TINYGLTF_BUILD_VALIDATOR_EXAMPLE:BOOL=OFF
+
+//On: header-only mode. Off: create tinygltf library(No TINYGLTF_IMPLEMENTATION
+// required in your project)
 TINYGLTF_HEADER_ONLY:BOOL=ON
 
+//Install tinygltf files during install step. Usually set to OFF
+// if you include tinygltf through add_subdirectory()
 TINYGLTF_INSTALL:BOOL=OFF
+
+//Install vendored nlohmann/json and nothings/stb headers
+TINYGLTF_INSTALL_VENDOR:BOOL=ON
 
 TINYGLTF_USE_CPP14:BOOL=ON
 
@@ -895,6 +914,15 @@ pkgcfg_lib_WAYLAND_m:FILEPATH=/usr/lib/x86_64-linux-gnu/libm.so
 
 //Path to a library.
 pkgcfg_lib_WAYLAND_wayland-client:FILEPATH=/usr/lib/x86_64-linux-gnu/libwayland-client.so
+
+//Value Computed by CMake
+tinygltf_BINARY_DIR:STATIC=/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-build
+
+//Value Computed by CMake
+tinygltf_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+tinygltf_SOURCE_DIR:STATIC=/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src
 
 //Value Computed by CMake
 tinygltf_v3_BINARY_DIR:STATIC=/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-build

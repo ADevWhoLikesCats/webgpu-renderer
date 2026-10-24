@@ -1,1 +1,0 @@
-/usr/bin/cc -g -Wl,--dependency-file=CMakeFiles/tester_v3_c_v1port.dir/link.d CMakeFiles/tester_v3_c_v1port.dir/tests/tester_v3_c_v1port.c.o CMakeFiles/tester_v3_c_v1port.dir/tiny_gltf_v3.c.o -o tester_v3_c_v1port

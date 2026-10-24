@@ -5,13 +5,13 @@
 # compile CXX with /usr/bin/c++
 C_DEFINES = -DENGINE_BUILDING
 
-C_INCLUDES = -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet
+C_INCLUDES = -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet
 
 C_FLAGS = -g -std=gnu11 -fPIC
 
 CXX_DEFINES = -DENGINE_BUILDING
 
-CXX_INCLUDES = -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet
+CXX_INCLUDES = -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet
 
 CXX_FLAGS = -g -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden
 

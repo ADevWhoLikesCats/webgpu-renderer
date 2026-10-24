@@ -85,51 +85,6 @@ rebuild_cache:
 rebuild_cache/fast: rebuild_cache
 .PHONY : rebuild_cache/fast
 
-# Special rule for the target list_install_components
-list_install_components:
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Available install components are: \"Unspecified\""
-.PHONY : list_install_components
-
-# Special rule for the target list_install_components
-list_install_components/fast: list_install_components
-.PHONY : list_install_components/fast
-
-# Special rule for the target install
-install: preinstall
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
-	/usr/bin/cmake -P cmake_install.cmake
-.PHONY : install
-
-# Special rule for the target install
-install/fast: preinstall/fast
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
-	/usr/bin/cmake -P cmake_install.cmake
-.PHONY : install/fast
-
-# Special rule for the target install/local
-install/local: preinstall
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
-	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
-.PHONY : install/local
-
-# Special rule for the target install/local
-install/local/fast: preinstall/fast
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
-	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
-.PHONY : install/local/fast
-
-# Special rule for the target install/strip
-install/strip: preinstall
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
-	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
-.PHONY : install/strip
-
-# Special rule for the target install/strip
-install/strip/fast: preinstall/fast
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
-	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
-.PHONY : install/strip/fast
-
 # The main all target
 all: cmake_check_build_system
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles /home/hrishikesh/Downloads/photonix-rewrite/build//CMakeFiles/progress.marks
@@ -188,56 +143,17 @@ engine_demo/fast:
 .PHONY : engine_demo/fast
 
 #=============================================================================
-# Target rules for targets named tester_v3_c
+# Target rules for targets named loader_example
 
 # Build rule for target.
-tester_v3_c: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tester_v3_c
-.PHONY : tester_v3_c
+loader_example: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 loader_example
+.PHONY : loader_example
 
 # fast build rule for target.
-tester_v3_c/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c.dir/build
-.PHONY : tester_v3_c/fast
-
-#=============================================================================
-# Target rules for targets named tester_v3_c_v1port
-
-# Build rule for target.
-tester_v3_c_v1port: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tester_v3_c_v1port
-.PHONY : tester_v3_c_v1port
-
-# fast build rule for target.
-tester_v3_c_v1port/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_c_v1port.dir/build
-.PHONY : tester_v3_c_v1port/fast
-
-#=============================================================================
-# Target rules for targets named tester_v3_json_c
-
-# Build rule for target.
-tester_v3_json_c: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tester_v3_json_c
-.PHONY : tester_v3_json_c
-
-# fast build rule for target.
-tester_v3_json_c/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_json_c.dir/build
-.PHONY : tester_v3_json_c/fast
-
-#=============================================================================
-# Target rules for targets named tester_v3_freestanding
-
-# Build rule for target.
-tester_v3_freestanding: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 tester_v3_freestanding
-.PHONY : tester_v3_freestanding
-
-# fast build rule for target.
-tester_v3_freestanding/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build.make _deps/tinygltf-build/CMakeFiles/tester_v3_freestanding.dir/build
-.PHONY : tester_v3_freestanding/fast
+loader_example/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/tinygltf-build/CMakeFiles/loader_example.dir/build.make _deps/tinygltf-build/CMakeFiles/loader_example.dir/build
+.PHONY : loader_example/fast
 
 #=============================================================================
 # Target rules for targets named glm
@@ -379,18 +295,11 @@ help:
 	@echo "... clean"
 	@echo "... depend"
 	@echo "... edit_cache"
-	@echo "... install"
-	@echo "... install/local"
-	@echo "... install/strip"
-	@echo "... list_install_components"
 	@echo "... rebuild_cache"
 	@echo "... engine_demo"
 	@echo "... glm"
+	@echo "... loader_example"
 	@echo "... photonix"
-	@echo "... tester_v3_c"
-	@echo "... tester_v3_c_v1port"
-	@echo "... tester_v3_freestanding"
-	@echo "... tester_v3_json_c"
 	@echo "... apps/demo/main.o"
 	@echo "... apps/demo/main.i"
 	@echo "... apps/demo/main.s"

@@ -23,7 +23,7 @@ include(FetchContent)
 FetchContent_Declare(
     tinygltf
     GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
-    GIT_TAG        release
+    GIT_TAG        v2.9.5
     GIT_SHALLOW    TRUE
 )
 set(TINYGLTF_HEADER_ONLY ON CACHE BOOL "" FORCE)
@@ -73,6 +73,7 @@ add_library(photonix STATIC
     src/engine/api.cpp
     src/engine/engine.cpp
     src/engine/frame_graph.cpp
+    src/engine/tinygltf_impl.cpp
     src/sdl3webgpu.c
 )
 

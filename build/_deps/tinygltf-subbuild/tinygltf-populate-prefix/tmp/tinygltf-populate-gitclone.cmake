@@ -52,13 +52,13 @@ endif()
 
 execute_process(
   COMMAND "/usr/bin/git"
-          checkout "release" --
+          checkout "v2.9.5" --
   WORKING_DIRECTORY "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src"
   RESULT_VARIABLE error_code
   ${maybe_show_command}
 )
 if(error_code)
-  message(FATAL_ERROR "Failed to checkout tag: 'release'")
+  message(FATAL_ERROR "Failed to checkout tag: 'v2.9.5'")
 endif()
 
 set(init_submodules TRUE)
