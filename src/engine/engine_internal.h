@@ -76,6 +76,13 @@ struct Mesh {
     uint32_t   index_count   = 0;
     glm::vec3  aabb_min      = glm::vec3(0.0f);
     glm::vec3  aabb_max      = glm::vec3(0.0f);
+
+    // Material (per-mesh for v1; per-material-instance later).
+    glm::vec4  base_color = glm::vec4(1.0f, 0.55f, 0.15f, 1.0f);  // linear
+    float      roughness  = 0.5f;
+    float      metallic   = 0.0f;
+    float      ao         = 1.0f;
+    uint32_t   _pad       = 0;
 };
 
 // A scene object references a mesh and carries its world transform.

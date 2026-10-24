@@ -264,6 +264,30 @@ src/engine/frame_graph.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.s
 .PHONY : src/engine/frame_graph.cpp.s
 
+src/engine/tinygltf_impl.o: src/engine/tinygltf_impl.cpp.o
+.PHONY : src/engine/tinygltf_impl.o
+
+# target to build an object file
+src/engine/tinygltf_impl.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o
+.PHONY : src/engine/tinygltf_impl.cpp.o
+
+src/engine/tinygltf_impl.i: src/engine/tinygltf_impl.cpp.i
+.PHONY : src/engine/tinygltf_impl.i
+
+# target to preprocess a source file
+src/engine/tinygltf_impl.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.i
+.PHONY : src/engine/tinygltf_impl.cpp.i
+
+src/engine/tinygltf_impl.s: src/engine/tinygltf_impl.cpp.s
+.PHONY : src/engine/tinygltf_impl.s
+
+# target to generate assembly for a file
+src/engine/tinygltf_impl.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.s
+.PHONY : src/engine/tinygltf_impl.cpp.s
+
 src/sdl3webgpu.o: src/sdl3webgpu.c.o
 .PHONY : src/sdl3webgpu.o
 
@@ -312,6 +336,9 @@ help:
 	@echo "... src/engine/frame_graph.o"
 	@echo "... src/engine/frame_graph.i"
 	@echo "... src/engine/frame_graph.s"
+	@echo "... src/engine/tinygltf_impl.o"
+	@echo "... src/engine/tinygltf_impl.i"
+	@echo "... src/engine/tinygltf_impl.s"
 	@echo "... src/sdl3webgpu.o"
 	@echo "... src/sdl3webgpu.i"
 	@echo "... src/sdl3webgpu.s"

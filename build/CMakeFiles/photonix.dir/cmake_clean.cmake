@@ -5,6 +5,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/photonix.dir/src/engine/engine.cpp.o.d"
   "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o"
   "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o.d"
+  "CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o"
+  "CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o.d"
   "CMakeFiles/photonix.dir/src/sdl3webgpu.c.o"
   "CMakeFiles/photonix.dir/src/sdl3webgpu.c.o.d"
   "libphotonix.a"

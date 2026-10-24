@@ -388,6 +388,12 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o: \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/type_half.inl \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/integer.hpp \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/func_integer.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src/tiny_gltf.h \
+ /usr/include/c++/15/cstring /usr/include/string.h /usr/include/strings.h \
+ /usr/include/c++/15/map /usr/include/c++/15/bits/stl_tree.h \
+ /usr/include/c++/15/bits/stl_map.h \
+ /usr/include/c++/15/bits/stl_multimap.h /usr/include/c++/15/utility \
+ /usr/include/c++/15/bits/stl_relops.h \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/matrix_transform.hpp \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/matrix_projection.hpp \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../gtc/constants.hpp \
@@ -401,11 +407,35 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o: \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/matrix_transform.hpp \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/matrix_transform.inl \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/matrix_transform.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/quaternion.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/vector_relational.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/vector_relational.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../detail/type_float.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../detail/setup.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_common.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../ext/quaternion_geometric.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../ext/quaternion_geometric.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_common.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_float.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../detail/type_quat.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../detail/../ext/quaternion_relational.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../detail/../ext/quaternion_relational.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/../detail/type_quat.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_float_precision.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_double.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_double_precision.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_trigonometric.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_trigonometric.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_transform.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../ext/quaternion_transform.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/quaternion.inl \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/epsilon.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/../detail/setup.hpp \
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/epsilon.inl \
  /home/hrishikesh/Downloads/photonix-rewrite/include/engine/engine.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_stdinc.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_platform_defines.h \
- /usr/include/string.h /usr/include/strings.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_begin_code.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_close_code.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_assert.h \
@@ -463,10 +493,15 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o: \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_tray.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_version.h \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_oldnames.h \
- /usr/include/c++/15/cstring /usr/include/c++/15/thread \
- /usr/include/c++/15/stop_token /usr/include/c++/15/atomic \
- /usr/include/c++/15/bits/std_thread.h /usr/include/c++/15/semaphore \
- /usr/include/c++/15/bits/semaphore_base.h \
+ /usr/include/c++/15/algorithm /usr/include/c++/15/bits/stl_algo.h \
+ /usr/include/c++/15/bits/algorithmfwd.h \
+ /usr/include/c++/15/bits/stl_heap.h \
+ /usr/include/c++/15/bits/uniform_int_dist.h \
+ /usr/include/c++/15/bits/ranges_algo.h \
+ /usr/include/c++/15/pstl/glue_algorithm_defs.h \
+ /usr/include/c++/15/thread /usr/include/c++/15/stop_token \
+ /usr/include/c++/15/atomic /usr/include/c++/15/bits/std_thread.h \
+ /usr/include/c++/15/semaphore /usr/include/c++/15/bits/semaphore_base.h \
  /usr/include/c++/15/bits/chrono.h /usr/include/c++/15/ratio \
  /usr/include/c++/15/ctime /usr/include/c++/15/bits/parse_numbers.h \
  /usr/include/c++/15/bits/atomic_timed_wait.h \
@@ -477,10 +512,7 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o: \
  /usr/include/c++/15/istream /usr/include/c++/15/ostream \
  /usr/include/c++/15/bits/ostream.tcc \
  /usr/include/c++/15/bits/istream.tcc \
- /usr/include/c++/15/bits/sstream.tcc /usr/include/c++/15/bits/stl_algo.h \
- /usr/include/c++/15/bits/algorithmfwd.h \
- /usr/include/c++/15/bits/stl_heap.h \
- /usr/include/c++/15/bits/uniform_int_dist.h \
+ /usr/include/c++/15/bits/sstream.tcc \
  /usr/include/c++/15/bits/chrono_io.h /usr/include/c++/15/iomanip \
  /usr/include/c++/15/locale \
  /usr/include/c++/15/bits/locale_facets_nonio.h \

@@ -12,6 +12,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/api.cpp" "CMakeFiles/photonix.dir/src/engine/api.cpp.o" "gcc" "CMakeFiles/photonix.dir/src/engine/api.cpp.o.d"
   "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/engine.cpp" "CMakeFiles/photonix.dir/src/engine/engine.cpp.o" "gcc" "CMakeFiles/photonix.dir/src/engine/engine.cpp.o.d"
   "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/frame_graph.cpp" "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o" "gcc" "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o.d"
+  "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp" "CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o" "gcc" "CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/home/hrishikesh/Downloads/photonix-rewrite/include
+CXX_INCLUDES = -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include
 
 CXX_FLAGS = -g -std=gnu++20 -fPIE -fvisibility=hidden -fvisibility-inlines-hidden
 

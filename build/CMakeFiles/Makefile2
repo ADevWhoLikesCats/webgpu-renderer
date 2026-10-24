@@ -152,12 +152,12 @@ _deps/tinygltf-build/clean: _deps/tinygltf-build/CMakeFiles/loader_example.dir/c
 CMakeFiles/photonix.dir/all: _deps/glm-build/glm/CMakeFiles/glm.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=7,8,9,10,11 "Built target photonix"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=7,8,9,10,11,12 "Built target photonix"
 .PHONY : CMakeFiles/photonix.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/photonix.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 7
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 8
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/photonix.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 0
 .PHONY : CMakeFiles/photonix.dir/rule
@@ -169,7 +169,7 @@ photonix: CMakeFiles/photonix.dir/rule
 # codegen rule for target.
 CMakeFiles/photonix.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=7,8,9,10,11 "Finished codegen for target photonix"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=7,8,9,10,11,12 "Finished codegen for target photonix"
 .PHONY : CMakeFiles/photonix.dir/codegen
 
 # clean rule for target.
@@ -190,7 +190,7 @@ CMakeFiles/engine_demo.dir/all: CMakeFiles/photonix.dir/all
 
 # Build rule for subdir invocation for target.
 CMakeFiles/engine_demo.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 9
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 10
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/engine_demo.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles 0
 .PHONY : CMakeFiles/engine_demo.dir/rule

@@ -114,10 +114,24 @@ CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/hrishikesh/Downloads/photonix-rewrite/src/engine/frame_graph.cpp -o CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.s
 
+CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o: CMakeFiles/photonix.dir/flags.make
+CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o: /home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp
+CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o: CMakeFiles/photonix.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o -MF CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o.d -o CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp
+
+CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp > CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.i
+
+CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp -o CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.s
+
 CMakeFiles/photonix.dir/src/sdl3webgpu.c.o: CMakeFiles/photonix.dir/flags.make
 CMakeFiles/photonix.dir/src/sdl3webgpu.c.o: /home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c
 CMakeFiles/photonix.dir/src/sdl3webgpu.c.o: CMakeFiles/photonix.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building C object CMakeFiles/photonix.dir/src/sdl3webgpu.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building C object CMakeFiles/photonix.dir/src/sdl3webgpu.c.o"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/photonix.dir/src/sdl3webgpu.c.o -MF CMakeFiles/photonix.dir/src/sdl3webgpu.c.o.d -o CMakeFiles/photonix.dir/src/sdl3webgpu.c.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c
 
 CMakeFiles/photonix.dir/src/sdl3webgpu.c.i: cmake_force
@@ -133,6 +147,7 @@ photonix_OBJECTS = \
 "CMakeFiles/photonix.dir/src/engine/api.cpp.o" \
 "CMakeFiles/photonix.dir/src/engine/engine.cpp.o" \
 "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o" \
+"CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o" \
 "CMakeFiles/photonix.dir/src/sdl3webgpu.c.o"
 
 # External object files for target photonix
@@ -141,10 +156,11 @@ photonix_EXTERNAL_OBJECTS =
 libphotonix.a: CMakeFiles/photonix.dir/src/engine/api.cpp.o
 libphotonix.a: CMakeFiles/photonix.dir/src/engine/engine.cpp.o
 libphotonix.a: CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o
+libphotonix.a: CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o
 libphotonix.a: CMakeFiles/photonix.dir/src/sdl3webgpu.c.o
 libphotonix.a: CMakeFiles/photonix.dir/build.make
 libphotonix.a: CMakeFiles/photonix.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Linking CXX static library libphotonix.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/hrishikesh/Downloads/photonix-rewrite/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking CXX static library libphotonix.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/photonix.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/photonix.dir/link.txt --verbose=$(VERBOSE)
 

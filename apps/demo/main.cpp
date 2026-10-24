@@ -61,6 +61,11 @@ int main(int, char**) {
     engine_renderer_get_adapter_info(r, &ai);
     std::printf("demo: adapter=%s backend=%u\n", ai.device_name, ai.backend_type);
 
+    // Load a car model. Path is relative to the current working directory.
+    if (engine_renderer_load_gltf(r, "assets/car.glb") != ENGINE_OK) {
+        std::fprintf(stderr, "demo: gltf load failed\n");
+    }
+
     bool running = true;
     Uint64 t0 = SDL_GetTicks();
     while (running) {

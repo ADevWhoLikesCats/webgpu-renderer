@@ -1,9 +1,12 @@
 #include "engine_internal.h"
+#include "tiny_gltf.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include "engine/engine.h"
 #include <SDL3/SDL.h>
 
 #include <cstdio>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <thread>
@@ -237,7 +240,7 @@ bool Engine::init(const char* app_name,
     // ---- Uniform buffer (two mat4 = 128 bytes) ----
     {
         WGPUBufferDescriptor bd = {};
-        bd.size  = 128;
+        bd.size  = 192;  // mvp(64) + model(64) + material_color(16) + params(16) + pad(32)
         bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         gpu_.uniform_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         if (!gpu_.uniform_buffer) {
@@ -254,7 +257,7 @@ bool Engine::init(const char* app_name,
         entry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         entry.buffer.type            = WGPUBufferBindingType_Uniform;
         entry.buffer.hasDynamicOffset = false;
-        entry.buffer.minBindingSize   = 128;
+        entry.buffer.minBindingSize   = 192;
 
         WGPUBindGroupLayoutDescriptor bgl_desc = {};
         bgl_desc.entryCount = 1;
@@ -270,7 +273,7 @@ bool Engine::init(const char* app_name,
         bg_entry.binding = 0;
         bg_entry.buffer  = gpu_.uniform_buffer;
         bg_entry.offset  = 0;
-        bg_entry.size    = 128;
+        bg_entry.size    = 192;
 
         WGPUBindGroupDescriptor bg_desc = {};
         bg_desc.layout     = gpu_.uniform_bgl;
@@ -619,7 +622,13 @@ static WGPURenderPipeline make_geometry_pipeline(
     WGPUBindGroupLayout uniform_bgl)
 {
     const char* wgsl = R"(
-        struct Uniforms { mvp : mat4x4<f32>, model : mat4x4<f32>, };
+
+        struct Uniforms {
+            mvp            : mat4x4<f32>,
+            model          : mat4x4<f32>,
+            material_color : vec4<f32>,
+            material_params : vec4<f32>,  // x=roughness, y=metallic, z=ao
+        };
         @group(0) @binding(0) var<uniform> u : Uniforms;
 
         struct VSIn {
@@ -643,7 +652,7 @@ static WGPURenderPipeline make_geometry_pipeline(
         }
 
         fn oct_encode(n: vec3<f32>) -> vec2<f32> {
-            let p = n.xy / (abs(n.x) + abs(n.y) + abs(n.z));
+            let p = n.xy / (abs(n.x) + abs(n.y) + abs(n.z) + 1e-6);
             return select(p, (1.0 - abs(p.yx)) * sign(p), n.z < 0.0);
         }
 
@@ -658,9 +667,12 @@ static WGPURenderPipeline make_geometry_pipeline(
             var out : FSOut;
             let n  = normalize(in.normal);
             let oe = oct_encode(n);
-            out.albedo   = vec4<f32>(1.0, 0.55, 0.15, 1.0);
+            out.albedo   = u.material_color;
             out.normal   = vec4<f32>(oe.x, oe.y, 0.0, 1.0);
-            out.material = vec4<f32>(0.5, 0.0, 1.0, 1.0);
+            out.material = vec4<f32>(u.material_params.x,
+                                     u.material_params.y,
+                                     u.material_params.z,
+                                     1.0);
             return out;
         }
     )";
@@ -1073,20 +1085,38 @@ void Engine::begin_frame() {
         }
     }
 
-    // ---- MVP ----
+    // ---- Camera: derive from scene AABB (or fixed fallback for no scene) ----
     float t = (float)SDL_GetTicks() / 1000.0f;
-    glm::mat4 model = glm::rotate(glm::mat4(1.0f), t * 0.8f, glm::vec3(0.4f, 1.0f, 0.2f));
-    glm::mat4 view  = glm::lookAt(glm::vec3(2.5f, 2.5f, 2.5f),
-                                  glm::vec3(0.0f, 0.0f, 0.0f),
-                                  glm::vec3(0.0f, 1.0f, 0.0f));
-    float aspect = (float)offscreen_width_ / (float)offscreen_height_;
-    glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
-    proj[1][1] *= -1.0f;
-    glm::mat4 mvp = proj * view * model;
+    glm::mat4 view;
+    glm::vec3 cam_pos;
+    float scene_radius = 1.0f;
 
-    struct { glm::mat4 mvp; glm::mat4 model; } ubo;
-    ubo.mvp = mvp; ubo.model = model;
-    wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0, &ubo, sizeof(ubo));
+    if (scene_.loaded) {
+        glm::vec3 center = (scene_.aabb_min + scene_.aabb_max) * 0.5f;
+        scene_radius = glm::length(scene_.aabb_max - scene_.aabb_min) * 0.5f;
+        if (scene_radius < 0.01f) scene_radius = 1.0f;
+
+        // Orbit slowly around the scene for a "hero shot" that shows the car.
+        float orbit = t * 0.3f;
+        glm::vec3 offset_dir = glm::vec3(std::cos(orbit), 0.55f, std::sin(orbit));
+        cam_pos = center + offset_dir * scene_radius * 2.2f;
+        view = glm::lookAt(cam_pos, center, glm::vec3(0.0f, 1.0f, 0.0f));
+    } else {
+        cam_pos = glm::vec3(2.5f, 2.5f, 2.5f);
+        view = glm::lookAt(cam_pos, glm::vec3(0.0f, 0.0f, 0.0f),
+                           glm::vec3(0.0f, 1.0f, 0.0f));
+    }
+
+    float aspect = (float)offscreen_width_ / (float)offscreen_height_;
+    float far_plane = std::max(100.0f, scene_radius * 20.0f);
+    glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect,
+                                      scene_radius * 0.01f, far_plane);
+    // Note: proj[1][1] *= -1.0f is the usual WebGPU NDC flip. We tried that
+    // and got an upside-down car, so the glTF export / node transform must
+    // already produce a flip that cancels it. Removing the flip here.
+    glm::mat4 mvp = proj * view;  // = proj * view, multiplied by obj.transform per object
+    glm::mat4 mvp_proj_view = mvp;  // alias for the loop
+
 
     // ---- Frame graph setup ----
     // Resources persist across frames; register once per session.
@@ -1149,11 +1179,38 @@ void Engine::begin_frame() {
 
             WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &gp);
             wgpuRenderPassEncoderSetPipeline(rp, geometry_pipeline_);
-            wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
-            wgpuRenderPassEncoderSetVertexBuffer(rp, 0, gpu_.vertex_buffer, 0, 24 * 32);
-            wgpuRenderPassEncoderSetIndexBuffer(rp, gpu_.index_buffer,
-                                                WGPUIndexFormat_Uint16, 0, 36 * 2);
-            wgpuRenderPassEncoderDrawIndexed(rp, 36, 1, 0, 0, 0);
+            if (scene_.loaded) {
+                // Per-object draw. Each object overwrites the uniform buffer
+                // with its own MVP + model, then draws. Since uniforms are
+                // written between draws and the queue is serialized, this is
+                // safe (though not optimal — an instanced approach would do
+                // one write + one draw call for all objects).
+                for (const auto& obj : scene_.objects) {
+                    glm::mat4 mvp_obj = mvp_proj_view * obj.transform;
+
+                    struct Uniforms {
+                        glm::mat4 mvp;              // 64
+                        glm::mat4 model;            // 64
+                        glm::vec4 material_color;   // 16
+                        glm::vec4 material_params;  // 16 (roughness, metallic, ao, pad)
+                        uint8_t   _pad[32];         // 32 (buffer is 192)
+                    } u = {};
+                    u.mvp  = mvp_obj;
+                    u.model = obj.transform;
+
+                    const auto& mesh = scene_.meshes[obj.mesh_index];
+                    u.material_color = mesh.base_color;
+                    u.material_params = glm::vec4(mesh.roughness, mesh.metallic, mesh.ao, 0.0f);
+
+                    wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0, &u, 192);
+                    wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
+                    wgpuRenderPassEncoderSetVertexBuffer(rp, 0, mesh.vertex_buffer, 0,
+                        mesh.vertex_count * 32);
+                    wgpuRenderPassEncoderSetIndexBuffer(rp, mesh.index_buffer,
+                        WGPUIndexFormat_Uint32, 0, mesh.index_count * 4);
+                    wgpuRenderPassEncoderDrawIndexed(rp, mesh.index_count, 1, 0, 0, 0);
+                }
+            }
             wgpuRenderPassEncoderEnd(rp);
             wgpuRenderPassEncoderRelease(rp);
         });
@@ -1257,10 +1314,264 @@ void Engine::begin_frame() {
 void Engine::end_frame() {}
 void Engine::tick()        { if (gpu_.instance) wgpuInstanceProcessEvents(gpu_.instance); }
 
-bool Engine::load_gltf(const char*, std::string& err) {
-    err = "gltf loading not implemented yet";
-    return false;
+bool Engine::load_gltf(const char* utf8_path, std::string& err) {
+    if (!utf8_path || !utf8_path[0]) { err = "empty path"; return false; }
+    if (!initialized_) { err = "engine not initialized"; return false; }
+
+    tinygltf::TinyGLTF loader;
+    tinygltf::Model    model;
+    std::string        load_err, load_warn;
+
+    // Detect GLB vs ASCII glTF by extension.
+    std::string path_str(utf8_path);
+    bool is_glb = path_str.size() >= 4 &&
+                  path_str.compare(path_str.size() - 4, 4, ".glb") == 0;
+
+    bool ok = is_glb
+        ? loader.LoadBinaryFromFile(&model, &load_err, &load_warn, path_str)
+        : loader.LoadASCIIFromFile(&model, &load_err, &load_warn, path_str);
+
+    if (!load_warn.empty())
+        std::fprintf(stderr, "[engine] gltf warn: %s\n", load_warn.c_str());
+    if (!ok) {
+        err = "gltf load failed: " + load_err;
+        std::fprintf(stderr, "[engine] gltf error: %s\n", load_err.c_str());
+        return false;
+    }
+
+    std::fprintf(stderr,
+        "[engine] gltf loaded: %zu meshes, %zu nodes, %zu accessors\n",
+        model.meshes.size(), model.nodes.size(), model.accessors.size());
+
+    // --- 1. Convert each glTF primitive into a Mesh (GPU buffers + AABB) ---
+    // glTF meshes can have multiple primitives (one per material). For v1,
+    // we flatten: each primitive becomes its own Mesh, and each node that
+    // references a mesh gets one SceneObject per primitive.
+    // We'll store per-glTF-mesh a list of (mesh_index, material_index).
+    struct PrimRef { uint32_t mesh_index; uint32_t material_index; };
+    std::vector<std::vector<PrimRef>> gltf_mesh_prims(model.meshes.size());
+
+    glm::vec3 scene_min( 1e30f);
+    glm::vec3 scene_max(-1e30f);
+
+    for (size_t mi = 0; mi < model.meshes.size(); ++mi) {
+        const auto& gmesh = model.meshes[mi];
+        for (size_t pi = 0; pi < gmesh.primitives.size(); ++pi) {
+            const auto& prim = gmesh.primitives[pi];
+
+            // Position accessor is required.
+            auto pos_it = prim.attributes.find("POSITION");
+            if (pos_it == prim.attributes.end()) continue;
+            const auto& pos_acc = model.accessors[pos_it->second];
+            if (pos_acc.type != TINYGLTF_TYPE_VEC3 ||
+                pos_acc.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                std::fprintf(stderr, "[engine] skip prim %zu/%zu: bad POSITION type\n",
+                             mi, pi);
+                continue;
+            }
+
+            // Optional normals and UVs.
+            const float* normals_ptr = nullptr;
+            const float* uvs_ptr     = nullptr;
+            size_t normals_count = 0, uvs_count = 0;
+            {
+                auto it = prim.attributes.find("NORMAL");
+                if (it != prim.attributes.end()) {
+                    const auto& acc = model.accessors[it->second];
+                    if (acc.type == TINYGLTF_TYPE_VEC3 &&
+                        acc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                        const auto& bv = model.bufferViews[acc.bufferView];
+                        normals_ptr = reinterpret_cast<const float*>(
+                            model.buffers[bv.buffer].data.data()
+                            + bv.byteOffset + acc.byteOffset);
+                        normals_count = acc.count;
+                    }
+                }
+            }
+            {
+                auto it = prim.attributes.find("TEXCOORD_0");
+                if (it != prim.attributes.end()) {
+                    const auto& acc = model.accessors[it->second];
+                    if (acc.type == TINYGLTF_TYPE_VEC2 &&
+                        acc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                        const auto& bv = model.bufferViews[acc.bufferView];
+                        uvs_ptr = reinterpret_cast<const float*>(
+                            model.buffers[bv.buffer].data.data()
+                            + bv.byteOffset + acc.byteOffset);
+                        uvs_count = acc.count;
+                    }
+                }
+            }
+
+            const auto& pos_bv = model.bufferViews[pos_acc.bufferView];
+            const float* pos_ptr = reinterpret_cast<const float*>(
+                model.buffers[pos_bv.buffer].data.data()
+                + pos_bv.byteOffset + pos_acc.byteOffset);
+            size_t vert_count = pos_acc.count;
+
+            // Build 32-byte interleaved vertex data (pos, normal, uv).
+            std::vector<float> vertex_data(vert_count * 8);
+            glm::vec3 mmin(1e30f), mmax(-1e30f);
+            for (size_t v = 0; v < vert_count; ++v) {
+                float px = pos_ptr[v*3+0];
+                float py = pos_ptr[v*3+1];
+                float pz = pos_ptr[v*3+2];
+                vertex_data[v*8+0] = px;
+                vertex_data[v*8+1] = py;
+                vertex_data[v*8+2] = pz;
+                if (normals_ptr && v < normals_count) {
+                    vertex_data[v*8+3] = normals_ptr[v*3+0];
+                    vertex_data[v*8+4] = normals_ptr[v*3+1];
+                    vertex_data[v*8+5] = normals_ptr[v*3+2];
+                } else {
+                    vertex_data[v*8+3] = 0.0f;
+                    vertex_data[v*8+4] = 1.0f;
+                    vertex_data[v*8+5] = 0.0f;
+                }
+                if (uvs_ptr && v < uvs_count) {
+                    vertex_data[v*8+6] = uvs_ptr[v*2+0];
+                    vertex_data[v*8+7] = uvs_ptr[v*2+1];
+                } else {
+                    vertex_data[v*8+6] = 0.0f;
+                    vertex_data[v*8+7] = 0.0f;
+                }
+                mmin.x = std::min(mmin.x, px); mmax.x = std::max(mmax.x, px);
+                mmin.y = std::min(mmin.y, py); mmax.y = std::max(mmax.y, py);
+                mmin.z = std::min(mmin.z, pz); mmax.z = std::max(mmax.z, pz);
+            }
+
+            // Index buffer (16 or 32 bit depending on accessor count).
+            std::vector<uint32_t> index_data;
+            if (prim.indices >= 0) {
+                const auto& idx_acc = model.accessors[prim.indices];
+                const auto& idx_bv  = model.bufferViews[idx_acc.bufferView];
+                const uint8_t* src = model.buffers[idx_bv.buffer].data.data()
+                                    + idx_bv.byteOffset + idx_acc.byteOffset;
+                index_data.resize(idx_acc.count);
+                if (idx_acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+                    const uint16_t* p16 = reinterpret_cast<const uint16_t*>(src);
+                    for (size_t i = 0; i < idx_acc.count; ++i)
+                        index_data[i] = p16[i];
+                } else if (idx_acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+                    const uint32_t* p32 = reinterpret_cast<const uint32_t*>(src);
+                    for (size_t i = 0; i < idx_acc.count; ++i)
+                        index_data[i] = p32[i];
+                } else {
+                    std::fprintf(stderr, "[engine] unsupported index type %d\n",
+                                 idx_acc.componentType);
+                    continue;
+                }
+            } else {
+                // Non-indexed: generate 0..N-1
+                index_data.resize(vert_count);
+                for (size_t i = 0; i < vert_count; ++i) index_data[i] = (uint32_t)i;
+            }
+
+            // Create GPU buffers.
+            Mesh mesh;
+            {
+                WGPUBufferDescriptor vbd = {};
+                vbd.size  = vertex_data.size() * sizeof(float);
+                vbd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+                mesh.vertex_buffer = wgpuDeviceCreateBuffer(gpu_.device, &vbd);
+                wgpuQueueWriteBuffer(gpu_.queue, mesh.vertex_buffer, 0,
+                                     vertex_data.data(), vbd.size);
+            }
+            {
+                WGPUBufferDescriptor ibd = {};
+                ibd.size  = index_data.size() * sizeof(uint32_t);
+                ibd.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+                mesh.index_buffer = wgpuDeviceCreateBuffer(gpu_.device, &ibd);
+                wgpuQueueWriteBuffer(gpu_.queue, mesh.index_buffer, 0,
+                                     index_data.data(), ibd.size);
+            }
+            mesh.vertex_count = (uint32_t)vert_count;
+            mesh.index_count  = (uint32_t)index_data.size();
+            mesh.aabb_min = mmin;
+            mesh.aabb_max = mmax;
+
+            // Read material.
+            if (prim.material >= 0 && prim.material < (int)model.materials.size()) {
+                const auto& mat = model.materials[prim.material];
+                const auto& pbr = mat.pbrMetallicRoughness;
+                if (pbr.baseColorFactor.size() == 4) {
+                    mesh.base_color = glm::vec4(
+                        (float)pbr.baseColorFactor[0],
+                        (float)pbr.baseColorFactor[1],
+                        (float)pbr.baseColorFactor[2],
+                        (float)pbr.baseColorFactor[3]);
+                }
+                mesh.roughness = (float)pbr.roughnessFactor;
+                mesh.metallic  = (float)pbr.metallicFactor;
+            }
+
+            scene_.meshes.push_back(mesh);
+
+            uint32_t new_mi = (uint32_t)(scene_.meshes.size() - 1);
+            gltf_mesh_prims[mi].push_back(PrimRef{new_mi, (uint32_t)prim.material});
+
+            scene_min.x = std::min(scene_min.x, mmin.x); scene_max.x = std::max(scene_max.x, mmax.x);
+            scene_min.y = std::min(scene_min.y, mmin.y); scene_max.y = std::max(scene_max.y, mmax.y);
+            scene_min.z = std::min(scene_min.z, mmin.z); scene_max.z = std::max(scene_max.z, mmax.z);
+        }
+    }
+
+    std::fprintf(stderr, "[engine] %zu GPU meshes uploaded\n", scene_.meshes.size());
+
+    // --- 2. Walk nodes, produce SceneObjects (v1: root transform only) ---
+    // Full hierarchy traversal (parent * child) is a follow-up; for a car
+    // model exported from Blender/Maya, node transforms are usually already
+    // baked or the entire car is one node.
+    for (size_t ni = 0; ni < model.nodes.size(); ++ni) {
+        const auto& node = model.nodes[ni];
+        if (node.mesh < 0) continue;
+
+        // Local transform from TRS or matrix.
+        glm::mat4 local(1.0f);
+        if (node.matrix.size() == 16) {
+            for (int r = 0; r < 4; ++r)
+                for (int c = 0; c < 4; ++c)
+                    local[c][r] = (float)node.matrix[r*4 + c];
+        } else {
+            if (node.translation.size() == 3)
+                local = glm::translate(local, glm::vec3(
+                    (float)node.translation[0],
+                    (float)node.translation[1],
+                    (float)node.translation[2]));
+            if (node.rotation.size() == 4)
+                local *= glm::mat4_cast(glm::quat(
+                    (float)node.rotation[3],
+                    (float)node.rotation[0],
+                    (float)node.rotation[1],
+                    (float)node.rotation[2]));
+            if (node.scale.size() == 3)
+                local = glm::scale(local, glm::vec3(
+                    (float)node.scale[0],
+                    (float)node.scale[1],
+                    (float)node.scale[2]));
+        }
+
+        for (auto& pr : gltf_mesh_prims[node.mesh]) {
+            SceneObject obj;
+            obj.mesh_index = pr.mesh_index;
+            obj.transform  = local;
+            scene_.objects.push_back(obj);
+        }
+    }
+
+    scene_.aabb_min = scene_min;
+    scene_.aabb_max = scene_max;
+    scene_.loaded   = true;
+
+    std::fprintf(stderr,
+        "[engine] scene: %zu objects, AABB (%.2f,%.2f,%.2f)..(%.2f,%.2f,%.2f)\n",
+        scene_.objects.size(),
+        scene_min.x, scene_min.y, scene_min.z,
+        scene_max.x, scene_max.y, scene_max.z);
+
+    return true;
 }
+
 
 void Engine::get_adapter_info(char* device, size_t device_cap,
                               char* desc,   size_t desc_cap,

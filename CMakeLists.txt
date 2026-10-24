@@ -98,8 +98,19 @@ target_link_libraries(photonix PRIVATE
     ${WAYLAND_LIBRARIES}
 )
 
-if(NOT TARGET tinygltf AND NOT TARGET tinygltf::tinygltf)
-    target_include_directories(photonix PRIVATE ${tinygltf_SOURCE_DIR})
+# Link against the tinygltf target (INTERFACE lib in header-only mode).
+# This propagates include dirs with correct ordering (FetchContent BEFORE
+# system paths) so we don't accidentally pick up /usr/include/tiny_gltf.h.
+if(TARGET tinygltf)
+    target_link_libraries(photonix PRIVATE tinygltf)
+    # Belt-and-suspenders: ensure FetchContent dir is searched BEFORE system paths
+    target_include_directories(photonix BEFORE PRIVATE ${tinygltf_SOURCE_DIR})
+elseif(TARGET tinygltf::tinygltf)
+    target_link_libraries(photonix PRIVATE tinygltf::tinygltf)
+    target_include_directories(photonix BEFORE PRIVATE ${tinygltf_SOURCE_DIR})
+else()
+    # Fallback to raw include path
+    target_include_directories(photonix BEFORE PRIVATE ${tinygltf_SOURCE_DIR})
 endif()
 # (stb not needed; we write PPM manually)
 
@@ -108,3 +119,6 @@ endif()
 # =========================================================
 add_executable(engine_demo apps/demo/main.cpp)
 target_link_libraries(engine_demo PRIVATE photonix SDL3::SDL3)
+if(TARGET tinygltf)
+    target_include_directories(engine_demo BEFORE PRIVATE ${tinygltf_SOURCE_DIR})
+endif()
