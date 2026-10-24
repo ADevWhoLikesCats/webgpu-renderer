@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/CMakeFiles/tinygltf-populate"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/CMakeFiles/tinygltf-populate.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/CMakeFiles/tinygltf-populate-complete.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-build.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-configure.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-download.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-install.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-patch.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-test.rule"
+		},
+		{
+			"file" : "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/tinygltf-populate-prefix/src/tinygltf-populate-stamp/tinygltf-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"tinygltf-populate"
+		],
+		"name" : "tinygltf-populate"
+	}
+}

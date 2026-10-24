@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

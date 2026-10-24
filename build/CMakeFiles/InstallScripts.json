@@ -1,0 +1,10 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/hrishikesh/Downloads/photonix-rewrite/build/cmake_install.cmake",
+		"/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-build/cmake_install.cmake",
+		"/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-build/cmake_install.cmake",
+		"/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-build/glm/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
