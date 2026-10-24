@@ -77,28 +77,45 @@ struct Mesh {
     glm::vec3  aabb_min      = glm::vec3(0.0f);
     glm::vec3  aabb_max      = glm::vec3(0.0f);
 
-    // Material (per-mesh for v1; per-material-instance later).
-    glm::vec4  base_color = glm::vec4(1.0f, 0.55f, 0.15f, 1.0f);  // linear
-    float      roughness  = 0.5f;
-    float      metallic   = 0.0f;
-    float      ao         = 1.0f;
-    uint32_t   _pad       = 0;
+    // Material index into Scene::materials.
+    int material_index = -1;
+};
+
+// A material references one texture per map (base, MR, normal), plus a
+// pre-built bind group that binds all three textures + sampler at group 1.
+// Materials without a given map bind a 1×1 white texture so the shader
+// always has something valid to sample.
+struct Material {
+    glm::vec4 base_color = glm::vec4(1.0f);   // linear RGBA, multiplied by texture
+    float     roughness  = 1.0f;
+    float     metallic   = 0.0f;
+    float     ao         = 1.0f;
+
+    WGPUBindGroup bind_group = nullptr;        // group 1
 };
 
 // A scene object references a mesh and carries its world transform.
 // Multiple objects can reference the same mesh (instancing at the object level,
 // not yet at the draw level).
 struct SceneObject {
-    uint32_t  mesh_index = 0;
-    glm::mat4 transform  = glm::mat4(1.0f);
+    uint32_t  mesh_index     = 0;
+    uint32_t  material_index = 0;
+    glm::mat4 transform      = glm::mat4(1.0f);
 };
 
 struct Scene {
     std::vector<Mesh>        meshes;
+    std::vector<Material>    materials;
     std::vector<SceneObject> objects;
     glm::vec3                aabb_min = glm::vec3(0.0f);
     glm::vec3                aabb_max = glm::vec3(0.0f);
     bool                     loaded   = false;
+
+    // GpuContext-owned resources for textures. Kept here for lifetime
+    // management with the scene.
+    WGPUSampler              default_sampler = nullptr;   // linear/linear/repeat
+    WGPUTexture              white_tex = nullptr;         // 1×1 white
+    WGPUTextureView          white_view = nullptr;
 };
 
 class Engine {
@@ -154,6 +171,9 @@ private:
     bool                composite_pipeline_ready_ = false;
     WGPUBindGroupLayout composite_bgl_ = nullptr;
     WGPUBindGroup       composite_bg_  = nullptr;
+
+    // Material binding layout (group 1): base color + MR + normal + sampler.
+    WGPUBindGroupLayout material_bgl_ = nullptr;
 
     // HZB compute pipelines and bind groups.
     WGPUComputePipeline hzb_convert_pipeline_  = nullptr;

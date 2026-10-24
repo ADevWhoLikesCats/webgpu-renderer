@@ -239,8 +239,12 @@ bool Engine::init(const char* app_name,
 
     // ---- Uniform buffer (two mat4 = 128 bytes) ----
     {
+        // Per-object uniform buffer. Each object gets 256 bytes (aligned
+        // size of the 192-byte UBO). Sized for 8192 objects = 2 MB.
+        // Dynamic offsets let us bind the same buffer with different
+        // per-draw offsets, so each draw sees its own uniform data.
         WGPUBufferDescriptor bd = {};
-        bd.size  = 192;  // mvp(64) + model(64) + material_color(16) + params(16) + pad(32)
+        bd.size  = 256ull * 8192ull;
         bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
         gpu_.uniform_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         if (!gpu_.uniform_buffer) {
@@ -256,7 +260,7 @@ bool Engine::init(const char* app_name,
         entry.binding    = 0;
         entry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
         entry.buffer.type            = WGPUBufferBindingType_Uniform;
-        entry.buffer.hasDynamicOffset = false;
+        entry.buffer.hasDynamicOffset = true;
         entry.buffer.minBindingSize   = 192;
 
         WGPUBindGroupLayoutDescriptor bgl_desc = {};
@@ -273,7 +277,7 @@ bool Engine::init(const char* app_name,
         bg_entry.binding = 0;
         bg_entry.buffer  = gpu_.uniform_buffer;
         bg_entry.offset  = 0;
-        bg_entry.size    = 192;
+        bg_entry.size    = 192;  // one slice; dynamic offset picks which object
 
         WGPUBindGroupDescriptor bg_desc = {};
         bg_desc.layout     = gpu_.uniform_bgl;
@@ -329,6 +333,86 @@ bool Engine::init(const char* app_name,
             shutdown();
             return false;
         }
+    }
+
+    // ---- Material binding group layout (group 1) ----
+    // Bindings: 0 = base color texture, 1 = metallicRoughness texture,
+    //           2 = normal texture, 3 = sampler.
+    {
+        WGPUBindGroupLayoutEntry e[4] = {};
+        for (int i = 0; i < 3; ++i) {
+            e[i].binding = (uint32_t)i;
+            e[i].visibility = WGPUShaderStage_Fragment;
+            e[i].texture.sampleType = WGPUTextureSampleType_Float;
+            e[i].texture.viewDimension = WGPUTextureViewDimension_2D;
+        }
+        e[3].binding = 3;
+        e[3].visibility = WGPUShaderStage_Fragment;
+        e[3].sampler.type = WGPUSamplerBindingType_Filtering;
+        WGPUBindGroupLayoutDescriptor bgl = {};
+        bgl.entryCount = 4;
+        bgl.entries    = e;
+        material_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
+        if (!material_bgl_) {
+            err = "material BGL creation failed";
+            shutdown();
+            return false;
+        }
+        std::fprintf(stderr, "[engine] material bind group layout ready\n");
+    }
+
+    // ---- Default sampler for material textures ----
+    {
+        WGPUSamplerDescriptor sd = {};
+        sd.addressModeU  = WGPUAddressMode_Repeat;
+        sd.addressModeV  = WGPUAddressMode_Repeat;
+        sd.addressModeW  = WGPUAddressMode_Repeat;
+        sd.magFilter     = WGPUFilterMode_Linear;
+        sd.minFilter     = WGPUFilterMode_Linear;
+        sd.mipmapFilter  = WGPUMipmapFilterMode_Linear;
+        sd.maxAnisotropy = 1;
+        scene_.default_sampler = wgpuDeviceCreateSampler(gpu_.device, &sd);
+    }
+
+    // ---- 1x1 white texture (fallback for materials without a map) ----
+    {
+        WGPUTextureDescriptor td = {};
+        td.dimension     = WGPUTextureDimension_2D;
+        td.size          = { 1, 1, 1 };
+        td.format        = WGPUTextureFormat_RGBA8UnormSrgb;
+        td.mipLevelCount = 1;
+        td.sampleCount   = 1;
+        td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        scene_.white_tex = wgpuDeviceCreateTexture(gpu_.device, &td);
+        uint32_t white_pixel = 0xFFFFFFFFu;
+        // Direct write via a staging buffer since wgpuQueueWriteTexture isn't
+        // in the C API for arbitrary texture uploads; use CopyBufferToTexture.
+        // For 1x1, the simplest is a tiny staging buffer.
+        // bytesPerRow must be a multiple of 256 for CopyBufferToTexture.
+        // Allocate 256 bytes, write the 4-byte pixel at offset 0.
+        WGPUBufferDescriptor bd = {};
+        bd.size  = 256;
+        bd.usage = WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
+        WGPUBuffer staging = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        wgpuQueueWriteBuffer(gpu_.queue, staging, 0, &white_pixel, 4);
+
+        WGPUCommandEncoder e = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
+        WGPUTexelCopyBufferInfo src = {};
+        src.buffer = staging;
+        src.layout.bytesPerRow  = 256;
+        src.layout.rowsPerImage = 1;
+        WGPUTexelCopyTextureInfo dst = {};
+        dst.texture  = scene_.white_tex;
+        dst.mipLevel = 0;
+        dst.origin   = {0, 0, 0};
+        WGPUExtent3D extent = {1, 1, 1};
+        wgpuCommandEncoderCopyBufferToTexture(e, &src, &dst, &extent);
+        WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(e, nullptr);
+        wgpuQueueSubmit(gpu_.queue, 1, &cmd);
+        wgpuCommandBufferRelease(cmd);
+        wgpuCommandEncoderRelease(e);
+        wgpuBufferRelease(staging);
+        scene_.white_view = wgpuTextureCreateView(scene_.white_tex, nullptr);
     }
 
     // ---- HZB texture (mipmapped R32Float, downsampled min-depth pyramid) ----
@@ -619,7 +703,7 @@ void Engine::resize(uint32_t width, uint32_t height) {
 
 static WGPURenderPipeline make_geometry_pipeline(
     WGPUDevice device, WGPUTextureFormat /*unused_color_format*/,
-    WGPUBindGroupLayout uniform_bgl)
+    WGPUBindGroupLayout uniform_bgl, WGPUBindGroupLayout material_bgl)
 {
     const char* wgsl = R"(
 
@@ -631,23 +715,38 @@ static WGPURenderPipeline make_geometry_pipeline(
         };
         @group(0) @binding(0) var<uniform> u : Uniforms;
 
+        @group(1) @binding(0) var t_base   : texture_2d<f32>;
+        @group(1) @binding(1) var t_mr     : texture_2d<f32>;
+        @group(1) @binding(2) var t_normal : texture_2d<f32>;
+        @group(1) @binding(3) var s_mat    : sampler;
+
         struct VSIn {
-            @location(0) pos : vec3<f32>,
-            @location(1) normal : vec3<f32>,
-            @location(2) uv : vec2<f32>,
+            @location(0) pos     : vec3<f32>,
+            @location(1) normal  : vec3<f32>,
+            @location(2) uv      : vec2<f32>,
+            @location(3) tangent : vec4<f32>,
         };
         struct VSOut {
             @builtin(position) clip : vec4<f32>,
-            @location(0) normal : vec3<f32>,
-            @location(1) uv : vec2<f32>,
+            @location(0) normal  : vec3<f32>,
+            @location(1) tangent : vec3<f32>,
+            @location(2) bitan   : vec3<f32>,
+            @location(3) uv      : vec2<f32>,
         };
 
         @vertex
         fn vs_main(in : VSIn) -> VSOut {
             var out : VSOut;
-            out.clip   = u.mvp * vec4<f32>(in.pos, 1.0);
-            out.normal = in.normal;
-            out.uv     = in.uv;
+            out.clip = u.mvp * vec4<f32>(in.pos, 1.0);
+
+            let N = normalize(in.normal);
+            let T = normalize(in.tangent.xyz - N * dot(N, in.tangent.xyz));
+            let B = cross(N, T) * in.tangent.w;
+
+            out.normal  = N;
+            out.tangent = T;
+            out.bitan   = B;
+            out.uv      = in.uv;
             return out;
         }
 
@@ -665,14 +764,27 @@ static WGPURenderPipeline make_geometry_pipeline(
         @fragment
         fn fs_main(in : VSOut) -> FSOut {
             var out : FSOut;
-            let n  = normalize(in.normal);
-            let oe = oct_encode(n);
-            out.albedo   = u.material_color;
+
+            let base_sample = textureSample(t_base,   s_mat, in.uv);
+            let mr_sample   = textureSample(t_mr,     s_mat, in.uv);
+            let nrm_sample  = textureSample(t_normal, s_mat, in.uv);
+
+            let albedo = u.material_color.rgb * base_sample.rgb;
+
+            let roughness = clamp(u.material_params.x * mr_sample.g, 0.04, 1.0);
+            let metallic  = clamp(u.material_params.y * mr_sample.b, 0.0, 1.0);
+            let ao        = u.material_params.z;
+
+            let n_tangent = normalize(nrm_sample.xyz * 2.0 - 1.0);
+            let N_world   = normalize(in.tangent * n_tangent.x
+                                    + in.bitan   * n_tangent.y
+                                    + in.normal  * n_tangent.z);
+
+            let oe = oct_encode(N_world);
+
+            out.albedo   = vec4<f32>(albedo, 1.0);
             out.normal   = vec4<f32>(oe.x, oe.y, 0.0, 1.0);
-            out.material = vec4<f32>(u.material_params.x,
-                                     u.material_params.y,
-                                     u.material_params.z,
-                                     1.0);
+            out.material = vec4<f32>(roughness, metallic, ao, 1.0);
             return out;
         }
     )";
@@ -700,15 +812,16 @@ static WGPURenderPipeline make_geometry_pipeline(
     fs.targetCount = 3;
     fs.targets     = cts;
 
-    WGPUVertexAttribute attrs[3] = {};
+    WGPUVertexAttribute attrs[4] = {};
     attrs[0].format = WGPUVertexFormat_Float32x3; attrs[0].offset = 0;  attrs[0].shaderLocation = 0;
     attrs[1].format = WGPUVertexFormat_Float32x3; attrs[1].offset = 12; attrs[1].shaderLocation = 1;
     attrs[2].format = WGPUVertexFormat_Float32x2; attrs[2].offset = 24; attrs[2].shaderLocation = 2;
+    attrs[3].format = WGPUVertexFormat_Float32x4; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
 
     WGPUVertexBufferLayout vbl = {};
     vbl.stepMode = WGPUVertexStepMode_Vertex;
-    vbl.arrayStride = 32;
-    vbl.attributeCount = 3;
+    vbl.arrayStride = 48;
+    vbl.attributeCount = 4;
     vbl.attributes = attrs;
 
     WGPUVertexState vs = {};
@@ -734,9 +847,10 @@ static WGPURenderPipeline make_geometry_pipeline(
     ds.stencilFront.compare = WGPUCompareFunction_Always;
     ds.stencilBack.compare  = WGPUCompareFunction_Always;
 
+    WGPUBindGroupLayout layouts[2] = { uniform_bgl, material_bgl };
     WGPUPipelineLayoutDescriptor pl_desc = {};
-    pl_desc.bindGroupLayoutCount = 1;
-    pl_desc.bindGroupLayouts = &uniform_bgl;
+    pl_desc.bindGroupLayoutCount = 2;
+    pl_desc.bindGroupLayouts = layouts;
     WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
     if (!pl) { std::fprintf(stderr, "[engine] geometry pipeline layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
 
@@ -841,7 +955,7 @@ static WGPURenderPipeline make_composite_pipeline(
 
             // Single directional light.
             let L       = normalize(vec3<f32>(0.4, 0.8, 0.3));
-            let radiance = vec3<f32>(1.0, 0.95, 0.85) * 3.0;  // warm sun
+            let radiance = vec3<f32>(1.0, 0.95, 0.85) * 25.0;  // warm sun, boosted
 
             let H     = normalize(V + L);
             let NdotL = max(dot(N, L), 0.0);
@@ -867,15 +981,17 @@ static WGPURenderPipeline make_composite_pipeline(
             // Ambient: sky + ground, weighted by AO.
             let up     = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
             let sky    = mix(vec3<f32>(0.20, 0.22, 0.28),
-                             vec3<f32>(0.40, 0.55, 0.85), up);
+                             vec3<f32>(0.40, 0.55, 0.85), up) * 2.0;
             let ground = vec3<f32>(0.10, 0.08, 0.06);
             let ambient_irradiance = mix(ground, sky, up) * ao;
             let kD_ambient = (vec3<f32>(1.0) - F_Schlick(F0, NdotV)) * (1.0 - metallic);
             let ambient = kD_ambient * albedo * ambient_irradiance;
 
-            let color = Lo + ambient;
 
+            // R = albedo.r, G = albedo.g, B = albedo.b would be flat albedo.
+            // Better diagnostic: albedo * lighting so we see if it responds.
             // Tone mapping (ACES-ish) then sRGB handled by the swapchain.
+            let color = Lo + ambient;
             let x = color * 1.0;
             let tonemapped = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
             return vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
@@ -1037,7 +1153,7 @@ void Engine::begin_frame() {
     // Lazy pipeline creation (outside the graph — pipelines are persistent).
     if (!geometry_pipeline_ready_) {
         geometry_pipeline_ = make_geometry_pipeline(
-            gpu_.device, offscreen_format_, gpu_.uniform_bgl);
+            gpu_.device, offscreen_format_, gpu_.uniform_bgl, material_bgl_);
         geometry_pipeline_ready_ = true;
         if (!geometry_pipeline_) return;
     }
@@ -1185,27 +1301,47 @@ void Engine::begin_frame() {
                 // written between draws and the queue is serialized, this is
                 // safe (though not optimal — an instanced approach would do
                 // one write + one draw call for all objects).
-                for (const auto& obj : scene_.objects) {
-                    glm::mat4 mvp_obj = mvp_proj_view * obj.transform;
+                const uint32_t kStride = 256;
+                const uint32_t N = (uint32_t)scene_.objects.size();
 
-                    struct Uniforms {
-                        glm::mat4 mvp;              // 64
-                        glm::mat4 model;            // 64
-                        glm::vec4 material_color;   // 16
-                        glm::vec4 material_params;  // 16 (roughness, metallic, ao, pad)
-                        uint8_t   _pad[32];         // 32 (buffer is 192)
-                    } u = {};
-                    u.mvp  = mvp_obj;
-                    u.model = obj.transform;
+                // Build all per-object uniform data on the CPU in one buffer,
+                // then upload once before starting the render pass. The
+                // render pass binds the same uniform buffer per draw with a
+                // dynamic offset = i * kStride, so each draw sees its own
+                // slice. This is the correct WebGPU pattern; writing the
+                // buffer between draws inside a render pass doesn't work
+                // (the queue writes all land before command execution).
+                struct U {
+                    glm::mat4 mvp;
+                    glm::mat4 model;
+                    glm::vec4 material_color;
+                    glm::vec4 material_params;
+                    uint8_t   pad[32];
+                };
+                std::vector<uint8_t> uniform_data((size_t)N * kStride, 0);
+                for (uint32_t i = 0; i < N; ++i) {
+                    const auto& obj = scene_.objects[i];
+                    const auto& mat = scene_.materials[obj.material_index];
+                    U u = {};
+                    u.mvp    = mvp_proj_view * obj.transform;
+                    u.model  = obj.transform;
+                    u.material_color  = mat.base_color;
+                    u.material_params = glm::vec4(mat.roughness, mat.metallic, mat.ao, 0.0f);
+                    std::memcpy(uniform_data.data() + i * kStride, &u, sizeof(u));
+                }
+                wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0,
+                                     uniform_data.data(), uniform_data.size());
 
+                for (uint32_t i = 0; i < N; ++i) {
+                    const auto& obj = scene_.objects[i];
                     const auto& mesh = scene_.meshes[obj.mesh_index];
-                    u.material_color = mesh.base_color;
-                    u.material_params = glm::vec4(mesh.roughness, mesh.metallic, mesh.ao, 0.0f);
+                    uint32_t offset = i * kStride;
 
-                    wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0, &u, 192);
-                    wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 1, &offset);
+                    wgpuRenderPassEncoderSetBindGroup(rp, 1,
+                        scene_.materials[obj.material_index].bind_group, 0, nullptr);
                     wgpuRenderPassEncoderSetVertexBuffer(rp, 0, mesh.vertex_buffer, 0,
-                        mesh.vertex_count * 32);
+                        mesh.vertex_count * 48);
                     wgpuRenderPassEncoderSetIndexBuffer(rp, mesh.index_buffer,
                         WGPUIndexFormat_Uint32, 0, mesh.index_count * 4);
                     wgpuRenderPassEncoderDrawIndexed(rp, mesh.index_count, 1, 0, 0, 0);
@@ -1267,7 +1403,8 @@ void Engine::begin_frame() {
 
             WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &cp);
             wgpuRenderPassEncoderSetPipeline(rp, composite_pipeline_);
-            wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
+            uint32_t zero_off = 0;
+            wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 1, &zero_off);
             wgpuRenderPassEncoderSetBindGroup(rp, 1, composite_bg_, 0, nullptr);
             wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(rp);
@@ -1317,12 +1454,15 @@ void Engine::tick()        { if (gpu_.instance) wgpuInstanceProcessEvents(gpu_.i
 bool Engine::load_gltf(const char* utf8_path, std::string& err) {
     if (!utf8_path || !utf8_path[0]) { err = "empty path"; return false; }
     if (!initialized_) { err = "engine not initialized"; return false; }
+    if (!material_bgl_ || !scene_.default_sampler || !scene_.white_view) {
+        err = "material infrastructure not ready";
+        return false;
+    }
 
     tinygltf::TinyGLTF loader;
     tinygltf::Model    model;
     std::string        load_err, load_warn;
 
-    // Detect GLB vs ASCII glTF by extension.
     std::string path_str(utf8_path);
     bool is_glb = path_str.size() >= 4 &&
                   path_str.compare(path_str.size() - 4, 4, ".glb") == 0;
@@ -1340,14 +1480,219 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
     }
 
     std::fprintf(stderr,
-        "[engine] gltf loaded: %zu meshes, %zu nodes, %zu accessors\n",
-        model.meshes.size(), model.nodes.size(), model.accessors.size());
+        "[engine] gltf loaded: %zu meshes, %zu nodes, %zu accessors, "
+        "%zu images, %zu materials\n",
+        model.meshes.size(), model.nodes.size(), model.accessors.size(),
+        model.images.size(), model.materials.size());
 
-    // --- 1. Convert each glTF primitive into a Mesh (GPU buffers + AABB) ---
-    // glTF meshes can have multiple primitives (one per material). For v1,
-    // we flatten: each primitive becomes its own Mesh, and each node that
-    // references a mesh gets one SceneObject per primitive.
-    // We'll store per-glTF-mesh a list of (mesh_index, material_index).
+    // ====================================================================
+    // Helper: upload a raw RGBA8 image to a WGPUTexture, returning the view.
+    // Handles the 256-byte row pitch requirement for CopyBufferToTexture.
+    // ====================================================================
+    auto upload_rgba = [&](const uint8_t* pixels, uint32_t w, uint32_t h,
+                          WGPUTextureFormat format) -> WGPUTextureView {
+        if (!pixels || w == 0 || h == 0) return nullptr;
+
+        WGPUTextureDescriptor td = {};
+        td.dimension     = WGPUTextureDimension_2D;
+        td.size          = { w, h, 1 };
+        td.format        = format;
+        td.mipLevelCount = 1;
+        td.sampleCount   = 1;
+        td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        WGPUTexture tex = wgpuDeviceCreateTexture(gpu_.device, &td);
+        if (!tex) return nullptr;
+
+        // Pad each row to 256-byte multiple.
+        uint32_t row_bytes    = w * 4;
+        uint32_t padded_pitch = (row_bytes + 255u) & ~255u;
+        std::vector<uint8_t> staging_data((size_t)padded_pitch * h, 0);
+        for (uint32_t y = 0; y < h; ++y) {
+            std::memcpy(staging_data.data() + y * padded_pitch,
+                        pixels + y * row_bytes, row_bytes);
+        }
+
+        WGPUBufferDescriptor bd = {};
+        bd.size  = staging_data.size();
+        bd.usage = WGPUBufferUsage_CopySrc | WGPUBufferUsage_CopyDst;
+        WGPUBuffer staging = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        wgpuQueueWriteBuffer(gpu_.queue, staging, 0,
+                             staging_data.data(), staging_data.size());
+
+        WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
+        WGPUTexelCopyBufferInfo src = {};
+        src.buffer = staging;
+        src.layout.bytesPerRow  = padded_pitch;
+        src.layout.rowsPerImage = h;
+        WGPUTexelCopyTextureInfo dst = {};
+        dst.texture  = tex;
+        dst.mipLevel = 0;
+        dst.origin   = {0, 0, 0};
+        WGPUExtent3D extent = { w, h, 1 };
+        wgpuCommandEncoderCopyBufferToTexture(enc, &src, &dst, &extent);
+        WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
+        wgpuQueueSubmit(gpu_.queue, 1, &cmd);
+        wgpuCommandBufferRelease(cmd);
+        wgpuCommandEncoderRelease(enc);
+        wgpuBufferRelease(staging);
+
+        return wgpuTextureCreateView(tex, nullptr);
+    };
+
+    // ====================================================================
+    // 1. Upload all images. Images may be PNG or JPEG; tinygltf decodes
+    //    them to 8-bit RGBA (or RGB, or grayscale) via stb_image.
+    // ====================================================================
+    std::vector<WGPUTextureView> image_views(model.images.size(), nullptr);
+    std::vector<WGPUTexture>     image_textures(model.images.size(), nullptr);
+    for (size_t i = 0; i < model.images.size(); ++i) {
+        const auto& img = model.images[i];
+        if (img.image.empty() || img.width <= 0 || img.height <= 0) {
+            std::fprintf(stderr, "[engine] image[%zu] %s empty\n", i, img.name.c_str());
+            continue;
+        }
+        // Convert RGB or grayscale to RGBA for upload.
+        std::vector<uint8_t> rgba;
+        if (img.component == 4) {
+            rgba = img.image;
+        } else if (img.component == 3) {
+            rgba.resize((size_t)img.width * img.height * 4);
+            for (size_t p = 0; p < (size_t)img.width * img.height; ++p) {
+                rgba[p*4+0] = img.image[p*3+0];
+                rgba[p*4+1] = img.image[p*3+1];
+                rgba[p*4+2] = img.image[p*3+2];
+                rgba[p*4+3] = 255;
+            }
+        } else if (img.component == 1) {
+            rgba.resize((size_t)img.width * img.height * 4);
+            for (size_t p = 0; p < (size_t)img.width * img.height; ++p) {
+                rgba[p*4+0] = rgba[p*4+1] = rgba[p*4+2] = img.image[p];
+                rgba[p*4+3] = 255;
+            }
+        } else {
+            continue;
+        }
+
+        // Base color textures use sRGB; MR, normal, and others use linear.
+        // We can't distinguish by image alone; we'll create both views later
+        // if needed. For v1, use sRGB for images referenced as baseColor and
+        // linear for others. To keep it simple: create two textures per image
+        // only when needed. For now: create sRGB for all, and rely on the
+        // shader to convert MR values manually (they're in G/B channels and
+        // multiply low numbers; linear interpretation is close enough).
+        //
+        // Actually: create TWO textures per image. sRGB for base color usage,
+        // linear for normal/MR usage. Bind the correct one per material slot.
+        // This is the "lazy duplicate" approach; costs 2× GPU memory.
+        //
+        // Simpler v1: single texture, sRGB interpretation. The MR and normal
+        // textures will look slightly bright in the linear pipeline, but
+        // we're in "see the car" mode; proper sRGB/linear split is next step.
+        auto view = upload_rgba(rgba.data(), (uint32_t)img.width,
+                                (uint32_t)img.height,
+                                WGPUTextureFormat_RGBA8UnormSrgb);
+        if (view) {
+            image_views[i] = view;
+        }
+    }
+    std::fprintf(stderr, "[engine] %zu images uploaded\n", model.images.size());
+
+    // ====================================================================
+    // 2. Create Material entries. One per glTF material, with bind group.
+    // ====================================================================
+    scene_.materials.clear();
+    scene_.materials.reserve(model.materials.size() + 1);
+
+    // Default material for primitives with no material assigned (glTF -1).
+    // Index 0. glTF materials are appended starting at index 1 below.
+    {
+        Material def;
+        def.base_color = glm::vec4(0.5f, 0.5f, 0.5f, 1.0f);
+        def.roughness  = 0.5f;
+        def.metallic   = 0.0f;
+        def.ao         = 1.0f;
+        WGPUBindGroupEntry be[4] = {};
+        be[0].binding     = 0;
+        be[0].textureView = scene_.white_view;
+        be[1].binding     = 1;
+        be[1].textureView = scene_.white_view;
+        be[2].binding     = 2;
+        be[2].textureView = scene_.white_view;
+        be[3].binding     = 3;
+        be[3].sampler     = scene_.default_sampler;
+        WGPUBindGroupDescriptor bgd = {};
+        bgd.layout = material_bgl_;
+        bgd.entryCount = 4;
+        bgd.entries = be;
+        def.bind_group = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+        scene_.materials.push_back(def);
+    }
+
+    for (size_t mi = 0; mi < model.materials.size(); ++mi) {
+        const auto& gmat = model.materials[mi];
+        Material mat;
+
+        // Base color factor (linear).
+        if (gmat.pbrMetallicRoughness.baseColorFactor.size() == 4) {
+            mat.base_color = glm::vec4(
+                (float)gmat.pbrMetallicRoughness.baseColorFactor[0],
+                (float)gmat.pbrMetallicRoughness.baseColorFactor[1],
+                (float)gmat.pbrMetallicRoughness.baseColorFactor[2],
+                (float)gmat.pbrMetallicRoughness.baseColorFactor[3]);
+        }
+        mat.roughness = (float)gmat.pbrMetallicRoughness.roughnessFactor;
+        mat.metallic  = (float)gmat.pbrMetallicRoughness.metallicFactor;
+
+
+        // Resolve texture views.
+        auto resolve_texture = [&](int tex_index, WGPUTextureView fallback) -> WGPUTextureView {
+            if (tex_index < 0 || tex_index >= (int)model.textures.size()) return fallback;
+            int img_index = model.textures[tex_index].source;
+            if (img_index < 0 || img_index >= (int)image_views.size()) return fallback;
+            return image_views[img_index] ? image_views[img_index] : fallback;
+        };
+
+        WGPUTextureView base_view = resolve_texture(
+            gmat.pbrMetallicRoughness.baseColorTexture.index, scene_.white_view);
+        WGPUTextureView mr_view = resolve_texture(
+            gmat.pbrMetallicRoughness.metallicRoughnessTexture.index, scene_.white_view);
+        WGPUTextureView normal_view = resolve_texture(
+            gmat.normalTexture.index, scene_.white_view);
+
+        // Build the material bind group.
+        WGPUBindGroupEntry be[4] = {};
+        be[0].binding     = 0;
+        be[0].textureView = base_view;
+        be[1].binding     = 1;
+        be[1].textureView = mr_view;
+        be[2].binding     = 2;
+        be[2].textureView = normal_view;
+        be[3].binding     = 3;
+        be[3].sampler     = scene_.default_sampler;
+
+        WGPUBindGroupDescriptor bgd = {};
+        bgd.layout     = material_bgl_;
+        bgd.entryCount = 4;
+        bgd.entries    = be;
+        mat.bind_group = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+        if (!mat.bind_group) {
+            std::fprintf(stderr, "[engine] material[%zu] bind group failed\n", mi);
+        }
+        // DIAGNOSTIC: log material index, name, base color, texture status.
+        std::fprintf(stderr,
+            "[engine] mat[%zu] '%s' base=(%.4f,%.4f,%.4f) base_tex=%s bg=%p\n",
+            mi, gmat.name.c_str(),
+            mat.base_color.r, mat.base_color.g, mat.base_color.b,
+            (base_view != scene_.white_view) ? "YES" : "NO(fallback)",
+            (void*)mat.bind_group);
+        scene_.materials.push_back(mat);
+    }
+    std::fprintf(stderr, "[engine] %zu materials, %zu bind groups\n",
+                 scene_.materials.size(), model.materials.size());
+
+    // ====================================================================
+    // 3. Build meshes (48-byte vertex: pos+normal+uv+tangent).
+    // ====================================================================
     struct PrimRef { uint32_t mesh_index; uint32_t material_index; };
     std::vector<std::vector<PrimRef>> gltf_mesh_prims(model.meshes.size());
 
@@ -1359,21 +1704,22 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
         for (size_t pi = 0; pi < gmesh.primitives.size(); ++pi) {
             const auto& prim = gmesh.primitives[pi];
 
-            // Position accessor is required.
             auto pos_it = prim.attributes.find("POSITION");
             if (pos_it == prim.attributes.end()) continue;
             const auto& pos_acc = model.accessors[pos_it->second];
             if (pos_acc.type != TINYGLTF_TYPE_VEC3 ||
                 pos_acc.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                std::fprintf(stderr, "[engine] skip prim %zu/%zu: bad POSITION type\n",
-                             mi, pi);
                 continue;
             }
 
-            // Optional normals and UVs.
+            const auto& pos_bv = model.bufferViews[pos_acc.bufferView];
+            const float* pos_ptr = reinterpret_cast<const float*>(
+                model.buffers[pos_bv.buffer].data.data()
+                + pos_bv.byteOffset + pos_acc.byteOffset);
+            size_t vert_count = pos_acc.count;
+
+            // Normals (optional).
             const float* normals_ptr = nullptr;
-            const float* uvs_ptr     = nullptr;
-            size_t normals_count = 0, uvs_count = 0;
             {
                 auto it = prim.attributes.find("NORMAL");
                 if (it != prim.attributes.end()) {
@@ -1384,10 +1730,11 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
                         normals_ptr = reinterpret_cast<const float*>(
                             model.buffers[bv.buffer].data.data()
                             + bv.byteOffset + acc.byteOffset);
-                        normals_count = acc.count;
                     }
                 }
             }
+            // UVs (optional).
+            const float* uvs_ptr = nullptr;
             {
                 auto it = prim.attributes.find("TEXCOORD_0");
                 if (it != prim.attributes.end()) {
@@ -1398,49 +1745,58 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
                         uvs_ptr = reinterpret_cast<const float*>(
                             model.buffers[bv.buffer].data.data()
                             + bv.byteOffset + acc.byteOffset);
-                        uvs_count = acc.count;
+                    }
+                }
+            }
+            // Tangents (optional, but for normal mapping we compute if absent).
+            const float* tangents_ptr = nullptr;
+            {
+                auto it = prim.attributes.find("TANGENT");
+                if (it != prim.attributes.end()) {
+                    const auto& acc = model.accessors[it->second];
+                    if (acc.type == TINYGLTF_TYPE_VEC4 &&
+                        acc.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                        const auto& bv = model.bufferViews[acc.bufferView];
+                        tangents_ptr = reinterpret_cast<const float*>(
+                            model.buffers[bv.buffer].data.data()
+                            + bv.byteOffset + acc.byteOffset);
                     }
                 }
             }
 
-            const auto& pos_bv = model.bufferViews[pos_acc.bufferView];
-            const float* pos_ptr = reinterpret_cast<const float*>(
-                model.buffers[pos_bv.buffer].data.data()
-                + pos_bv.byteOffset + pos_acc.byteOffset);
-            size_t vert_count = pos_acc.count;
-
-            // Build 32-byte interleaved vertex data (pos, normal, uv).
-            std::vector<float> vertex_data(vert_count * 8);
+            // Build interleaved vertex data (48 bytes per vertex).
+            std::vector<float> vertex_data(vert_count * 12);  // 12 floats = 48 bytes
             glm::vec3 mmin(1e30f), mmax(-1e30f);
             for (size_t v = 0; v < vert_count; ++v) {
                 float px = pos_ptr[v*3+0];
                 float py = pos_ptr[v*3+1];
                 float pz = pos_ptr[v*3+2];
-                vertex_data[v*8+0] = px;
-                vertex_data[v*8+1] = py;
-                vertex_data[v*8+2] = pz;
-                if (normals_ptr && v < normals_count) {
-                    vertex_data[v*8+3] = normals_ptr[v*3+0];
-                    vertex_data[v*8+4] = normals_ptr[v*3+1];
-                    vertex_data[v*8+5] = normals_ptr[v*3+2];
+                vertex_data[v*12+0]  = px;
+                vertex_data[v*12+1]  = py;
+                vertex_data[v*12+2]  = pz;
+                vertex_data[v*12+3]  = normals_ptr ? normals_ptr[v*3+0] : 0.0f;
+                vertex_data[v*12+4]  = normals_ptr ? normals_ptr[v*3+1] : 1.0f;
+                vertex_data[v*12+5]  = normals_ptr ? normals_ptr[v*3+2] : 0.0f;
+                vertex_data[v*12+6]  = uvs_ptr ? uvs_ptr[v*2+0] : 0.0f;
+                vertex_data[v*12+7]  = uvs_ptr ? uvs_ptr[v*2+1] : 0.0f;
+                // Tangent: use file-provided, or fallback (1,0,0,1).
+                if (tangents_ptr) {
+                    vertex_data[v*12+8]  = tangents_ptr[v*4+0];
+                    vertex_data[v*12+9]  = tangents_ptr[v*4+1];
+                    vertex_data[v*12+10] = tangents_ptr[v*4+2];
+                    vertex_data[v*12+11] = tangents_ptr[v*4+3];
                 } else {
-                    vertex_data[v*8+3] = 0.0f;
-                    vertex_data[v*8+4] = 1.0f;
-                    vertex_data[v*8+5] = 0.0f;
-                }
-                if (uvs_ptr && v < uvs_count) {
-                    vertex_data[v*8+6] = uvs_ptr[v*2+0];
-                    vertex_data[v*8+7] = uvs_ptr[v*2+1];
-                } else {
-                    vertex_data[v*8+6] = 0.0f;
-                    vertex_data[v*8+7] = 0.0f;
+                    vertex_data[v*12+8]  = 1.0f;
+                    vertex_data[v*12+9]  = 0.0f;
+                    vertex_data[v*12+10] = 0.0f;
+                    vertex_data[v*12+11] = 1.0f;
                 }
                 mmin.x = std::min(mmin.x, px); mmax.x = std::max(mmax.x, px);
                 mmin.y = std::min(mmin.y, py); mmax.y = std::max(mmax.y, py);
                 mmin.z = std::min(mmin.z, pz); mmax.z = std::max(mmax.z, pz);
             }
 
-            // Index buffer (16 or 32 bit depending on accessor count).
+            // Indices.
             std::vector<uint32_t> index_data;
             if (prim.indices >= 0) {
                 const auto& idx_acc = model.accessors[prim.indices];
@@ -1450,24 +1806,16 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
                 index_data.resize(idx_acc.count);
                 if (idx_acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
                     const uint16_t* p16 = reinterpret_cast<const uint16_t*>(src);
-                    for (size_t i = 0; i < idx_acc.count; ++i)
-                        index_data[i] = p16[i];
+                    for (size_t i = 0; i < idx_acc.count; ++i) index_data[i] = p16[i];
                 } else if (idx_acc.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
                     const uint32_t* p32 = reinterpret_cast<const uint32_t*>(src);
-                    for (size_t i = 0; i < idx_acc.count; ++i)
-                        index_data[i] = p32[i];
-                } else {
-                    std::fprintf(stderr, "[engine] unsupported index type %d\n",
-                                 idx_acc.componentType);
-                    continue;
-                }
+                    for (size_t i = 0; i < idx_acc.count; ++i) index_data[i] = p32[i];
+                } else continue;
             } else {
-                // Non-indexed: generate 0..N-1
                 index_data.resize(vert_count);
                 for (size_t i = 0; i < vert_count; ++i) index_data[i] = (uint32_t)i;
             }
 
-            // Create GPU buffers.
             Mesh mesh;
             {
                 WGPUBufferDescriptor vbd = {};
@@ -1485,48 +1833,37 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
                 wgpuQueueWriteBuffer(gpu_.queue, mesh.index_buffer, 0,
                                      index_data.data(), ibd.size);
             }
-            mesh.vertex_count = (uint32_t)vert_count;
-            mesh.index_count  = (uint32_t)index_data.size();
-            mesh.aabb_min = mmin;
-            mesh.aabb_max = mmax;
+            mesh.vertex_count   = (uint32_t)vert_count;
+            mesh.index_count    = (uint32_t)index_data.size();
+            mesh.aabb_min       = mmin;
+            mesh.aabb_max       = mmax;
 
-            // Read material.
-            if (prim.material >= 0 && prim.material < (int)model.materials.size()) {
-                const auto& mat = model.materials[prim.material];
-                const auto& pbr = mat.pbrMetallicRoughness;
-                if (pbr.baseColorFactor.size() == 4) {
-                    mesh.base_color = glm::vec4(
-                        (float)pbr.baseColorFactor[0],
-                        (float)pbr.baseColorFactor[1],
-                        (float)pbr.baseColorFactor[2],
-                        (float)pbr.baseColorFactor[3]);
-                }
-                mesh.roughness = (float)pbr.roughnessFactor;
-                mesh.metallic  = (float)pbr.metallicFactor;
-            }
-
+            // Material index: glTF allows -1 (no material). Map to a
+            // "default material" slot at index 0.
+            int mat_idx = (prim.material >= 0 &&
+                           prim.material < (int)model.materials.size())
+                        ? (prim.material + 1) : 0;
+            mesh.material_index = mat_idx;
             scene_.meshes.push_back(mesh);
 
             uint32_t new_mi = (uint32_t)(scene_.meshes.size() - 1);
-            gltf_mesh_prims[mi].push_back(PrimRef{new_mi, (uint32_t)prim.material});
+            gltf_mesh_prims[mi].push_back(PrimRef{new_mi, (uint32_t)mat_idx});
 
             scene_min.x = std::min(scene_min.x, mmin.x); scene_max.x = std::max(scene_max.x, mmax.x);
             scene_min.y = std::min(scene_min.y, mmin.y); scene_max.y = std::max(scene_max.y, mmax.y);
             scene_min.z = std::min(scene_min.z, mmin.z); scene_max.z = std::max(scene_max.z, mmax.z);
         }
     }
+    std::fprintf(stderr, "[engine] %zu GPU meshes uploaded (48B/vertex)\n",
+                 scene_.meshes.size());
 
-    std::fprintf(stderr, "[engine] %zu GPU meshes uploaded\n", scene_.meshes.size());
-
-    // --- 2. Walk nodes, produce SceneObjects (v1: root transform only) ---
-    // Full hierarchy traversal (parent * child) is a follow-up; for a car
-    // model exported from Blender/Maya, node transforms are usually already
-    // baked or the entire car is one node.
+    // ====================================================================
+    // 4. Walk nodes, produce SceneObjects.
+    // ====================================================================
     for (size_t ni = 0; ni < model.nodes.size(); ++ni) {
         const auto& node = model.nodes[ni];
         if (node.mesh < 0) continue;
 
-        // Local transform from TRS or matrix.
         glm::mat4 local(1.0f);
         if (node.matrix.size() == 16) {
             for (int r = 0; r < 4; ++r)
@@ -1553,8 +1890,9 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
 
         for (auto& pr : gltf_mesh_prims[node.mesh]) {
             SceneObject obj;
-            obj.mesh_index = pr.mesh_index;
-            obj.transform  = local;
+            obj.mesh_index     = pr.mesh_index;
+            obj.material_index = pr.material_index;
+            obj.transform      = local;
             scene_.objects.push_back(obj);
         }
     }
@@ -1571,6 +1909,7 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
 
     return true;
 }
+
 
 
 void Engine::get_adapter_info(char* device, size_t device_cap,
