@@ -516,14 +516,11 @@ void Engine::resize(uint32_t width, uint32_t height) {
 }
 
 static WGPURenderPipeline make_geometry_pipeline(
-    WGPUDevice device, WGPUTextureFormat color_format,
+    WGPUDevice device, WGPUTextureFormat /*unused_color_format*/,
     WGPUBindGroupLayout uniform_bgl)
 {
     const char* wgsl = R"(
-        struct Uniforms {
-            mvp : mat4x4<f32>,
-            model : mat4x4<f32>,
-        };
+        struct Uniforms { mvp : mat4x4<f32>, model : mat4x4<f32>, };
         @group(0) @binding(0) var<uniform> u : Uniforms;
 
         struct VSIn {
@@ -546,13 +543,26 @@ static WGPURenderPipeline make_geometry_pipeline(
             return out;
         }
 
+        fn oct_encode(n: vec3<f32>) -> vec2<f32> {
+            let p = n.xy / (abs(n.x) + abs(n.y) + abs(n.z));
+            return select(p, (1.0 - abs(p.yx)) * sign(p), n.z < 0.0);
+        }
+
+        struct FSOut {
+            @location(0) albedo   : vec4<f32>,
+            @location(1) normal   : vec4<f32>,
+            @location(2) material : vec4<f32>,
+        };
+
         @fragment
-        fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
-            // Simple fake shade using normal so faces are distinguishable.
-            let n = normalize(in.normal);
-            let light = vec3<f32>(0.4, 0.8, 0.3);
-            let d = max(dot(n, normalize(light)), 0.0);
-            return vec4<f32>(vec3<f32>(1.0, 0.5, 0.1) * (0.3 + 0.7 * d), 1.0);
+        fn fs_main(in : VSOut) -> FSOut {
+            var out : FSOut;
+            let n  = normalize(in.normal);
+            let oe = oct_encode(n);
+            out.albedo   = vec4<f32>(1.0, 0.55, 0.15, 1.0);
+            out.normal   = vec4<f32>(oe.x, oe.y, 0.0, 1.0);
+            out.material = vec4<f32>(0.5, 0.0, 1.0, 1.0);
+            return out;
         }
     )";
 
@@ -564,95 +574,207 @@ static WGPURenderPipeline make_geometry_pipeline(
     WGPUShaderModuleDescriptor smd = {};
     smd.nextInChain = &wgsl_src.chain;
     WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
-    if (!mod) { std::fprintf(stderr, "[engine] cube shader module failed\n"); return nullptr; }
+    if (!mod) { std::fprintf(stderr, "[engine] geometry shader failed\n"); return nullptr; }
 
-    WGPUColorTargetState ct = {};
-    ct.format    = color_format;
-    ct.writeMask = WGPUColorWriteMask_All;
+    WGPUColorTargetState cts[3] = {};
+    for (int i = 0; i < 3; ++i) {
+        cts[i].format    = WGPUTextureFormat_RGBA8Unorm;
+        cts[i].writeMask = WGPUColorWriteMask_All;
+    }
 
     WGPUFragmentState fs = {};
     fs.module      = mod;
     fs.entryPoint.data   = "fs_main";
     fs.entryPoint.length = 7;
-    fs.targetCount = 1;
-    fs.targets     = &ct;
+    fs.targetCount = 3;
+    fs.targets     = cts;
 
     WGPUVertexAttribute attrs[3] = {};
-    attrs[0].format         = WGPUVertexFormat_Float32x3;
-    attrs[0].offset         = 0;
-    attrs[0].shaderLocation = 0;
-    attrs[1].format         = WGPUVertexFormat_Float32x3;
-    attrs[1].offset         = 12;
-    attrs[1].shaderLocation = 1;
-    attrs[2].format         = WGPUVertexFormat_Float32x2;
-    attrs[2].offset         = 24;
-    attrs[2].shaderLocation = 2;
+    attrs[0].format = WGPUVertexFormat_Float32x3; attrs[0].offset = 0;  attrs[0].shaderLocation = 0;
+    attrs[1].format = WGPUVertexFormat_Float32x3; attrs[1].offset = 12; attrs[1].shaderLocation = 1;
+    attrs[2].format = WGPUVertexFormat_Float32x2; attrs[2].offset = 24; attrs[2].shaderLocation = 2;
 
     WGPUVertexBufferLayout vbl = {};
-    vbl.stepMode       = WGPUVertexStepMode_Vertex;
-    vbl.arrayStride    = 32;
+    vbl.stepMode = WGPUVertexStepMode_Vertex;
+    vbl.arrayStride = 32;
     vbl.attributeCount = 3;
-    vbl.attributes     = attrs;
+    vbl.attributes = attrs;
 
     WGPUVertexState vs = {};
-    vs.module      = mod;
-    vs.entryPoint.data   = "vs_main";
+    vs.module = mod;
+    vs.entryPoint.data = "vs_main";
     vs.entryPoint.length = 7;
     vs.bufferCount = 1;
-    vs.buffers     = &vbl;
+    vs.buffers = &vbl;
 
     WGPUPrimitiveState prim = {};
-    prim.topology  = WGPUPrimitiveTopology_TriangleList;
+    prim.topology = WGPUPrimitiveTopology_TriangleList;
     prim.frontFace = WGPUFrontFace_CCW;
-    prim.cullMode  = WGPUCullMode_None;  // show all faces while debugging
+    prim.cullMode = WGPUCullMode_None;
 
     WGPUMultisampleState ms = {};
     ms.count = 1;
     ms.mask  = 0xFFFFFFFF;
 
     WGPUDepthStencilState ds = {};
-    ds.format            = WGPUTextureFormat_Depth32Float;
+    ds.format = WGPUTextureFormat_Depth32Float;
     ds.depthWriteEnabled = WGPUOptionalBool_True;
-    ds.depthCompare      = WGPUCompareFunction_Less;
+    ds.depthCompare = WGPUCompareFunction_Less;
     ds.stencilFront.compare = WGPUCompareFunction_Always;
     ds.stencilBack.compare  = WGPUCompareFunction_Always;
 
     WGPUPipelineLayoutDescriptor pl_desc = {};
     pl_desc.bindGroupLayoutCount = 1;
-    pl_desc.bindGroupLayouts     = &uniform_bgl;
+    pl_desc.bindGroupLayouts = &uniform_bgl;
     WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
-    if (!pl) { std::fprintf(stderr, "[engine] cube pipeline layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
+    if (!pl) { std::fprintf(stderr, "[engine] geometry pipeline layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
 
     WGPURenderPipelineDescriptor pd = {};
-    pd.layout      = pl;
-    pd.vertex      = vs;
-    pd.primitive   = prim;
+    pd.layout = pl;
+    pd.vertex = vs;
+    pd.primitive = prim;
     pd.multisample = ms;
-    pd.fragment    = &fs;
+    pd.fragment = &fs;
     pd.depthStencil = &ds;
 
     WGPURenderPipeline pipe = wgpuDeviceCreateRenderPipeline(device, &pd);
     wgpuPipelineLayoutRelease(pl);
     wgpuShaderModuleRelease(mod);
-    std::fprintf(stderr, "[engine] cube pipeline: %p\n", (void*)pipe);
+    std::fprintf(stderr, "[engine] geometry pipeline: %p\n", (void*)pipe);
     return pipe;
 }
+
+static WGPURenderPipeline make_composite_pipeline(
+    WGPUDevice device, WGPUTextureFormat color_format,
+    WGPUBindGroupLayout uniform_bgl, WGPUBindGroupLayout gbuf_bgl)
+{
+    const char* wgsl = R"(
+        @group(1) @binding(0) var t_albedo   : texture_2d<f32>;
+        @group(1) @binding(1) var t_normal   : texture_2d<f32>;
+        @group(1) @binding(2) var t_material : texture_2d<f32>;
+        @group(1) @binding(3) var s_gbuf     : sampler;
+
+        struct VSOut {
+            @builtin(position) clip : vec4<f32>,
+            @location(0) uv : vec2<f32>,
+        };
+
+        @vertex
+        fn vs_main(@builtin(vertex_index) i : u32) -> VSOut {
+            var pos = array<vec2<f32>, 3>(
+                vec2<f32>(-1.0, -1.0),
+                vec2<f32>( 3.0, -1.0),
+                vec2<f32>(-1.0,  3.0)
+            );
+            var out : VSOut;
+            out.clip = vec4<f32>(pos[i], 0.0, 1.0);
+            out.uv   = vec2<f32>((pos[i].x + 1.0) * 0.5, 1.0 - (pos[i].y + 1.0) * 0.5);
+            return out;
+        }
+
+        fn oct_decode(e: vec2<f32>) -> vec3<f32> {
+            let n = vec3<f32>(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+            let t = clamp(-n.z, 0.0, 1.0);
+            return normalize(vec3<f32>(
+                n.xy + select(vec2<f32>(t), -vec2<f32>(t), n.xy >= vec2<f32>(0.0)),
+                n.z));
+        }
+
+        @fragment
+        fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
+            let albedo = textureSample(t_albedo, s_gbuf, in.uv).rgb;
+            let n_enc  = textureSample(t_normal, s_gbuf, in.uv).rg;
+            let N = oct_decode(n_enc);
+            let L = normalize(vec3<f32>(0.4, 0.8, 0.3));
+            let NdotL = max(dot(N, L), 0.0);
+            let color = albedo * (0.15 + NdotL);
+            return vec4<f32>(color, 1.0);
+        }
+    )";
+
+    WGPUShaderSourceWGSL wgsl_src = {};
+    wgsl_src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgsl_src.code.data   = wgsl;
+    wgsl_src.code.length = strlen(wgsl);
+
+    WGPUShaderModuleDescriptor smd = {};
+    smd.nextInChain = &wgsl_src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) { std::fprintf(stderr, "[engine] composite shader failed\n"); return nullptr; }
+
+    WGPUColorTargetState ct = {};
+    ct.format = color_format;
+    ct.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState fs = {};
+    fs.module = mod;
+    fs.entryPoint.data = "fs_main";
+    fs.entryPoint.length = 7;
+    fs.targetCount = 1;
+    fs.targets = &ct;
+
+    WGPUVertexState vs = {};
+    vs.module = mod;
+    vs.entryPoint.data = "vs_main";
+    vs.entryPoint.length = 7;
+    vs.bufferCount = 0;
+    vs.buffers = nullptr;
+
+    WGPUPrimitiveState prim = {};
+    prim.topology = WGPUPrimitiveTopology_TriangleList;
+    prim.frontFace = WGPUFrontFace_CCW;
+    prim.cullMode = WGPUCullMode_None;
+
+    WGPUMultisampleState ms = {};
+    ms.count = 1;
+    ms.mask  = 0xFFFFFFFF;
+
+    WGPUBindGroupLayout layouts[2] = { uniform_bgl, gbuf_bgl };
+    WGPUPipelineLayoutDescriptor pl_desc = {};
+    pl_desc.bindGroupLayoutCount = 2;
+    pl_desc.bindGroupLayouts = layouts;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
+    if (!pl) { std::fprintf(stderr, "[engine] composite layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
+
+    WGPURenderPipelineDescriptor pd = {};
+    pd.layout = pl;
+    pd.vertex = vs;
+    pd.primitive = prim;
+    pd.multisample = ms;
+    pd.fragment = &fs;
+    pd.depthStencil = nullptr;
+
+    WGPURenderPipeline pipe = wgpuDeviceCreateRenderPipeline(device, &pd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] composite pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
 
 
 #include <vector>
 #include <cstdio>
 
 void Engine::begin_frame() {
-    if (!initialized_ || !offscreen_color_ || !gpu_.depth_view) return;
+    if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
+    // Lazy pipeline creation.
     if (!geometry_pipeline_ready_) {
         geometry_pipeline_ = make_geometry_pipeline(
             gpu_.device, offscreen_format_, gpu_.uniform_bgl);
         geometry_pipeline_ready_ = true;
-        if (!geometry_pipeline_) { std::fprintf(stderr, "[engine] no cube pipeline\n"); return; }
+        if (!geometry_pipeline_) return;
     }
+    if (!composite_pipeline_ready_ && composite_bgl_) {
+        composite_pipeline_ = make_composite_pipeline(
+            gpu_.device, offscreen_format_, gpu_.uniform_bgl, composite_bgl_);
+        composite_pipeline_ready_ = true;
+        if (!composite_pipeline_) return;
+    }
+    if (!geometry_pipeline_ || !composite_pipeline_) return;
 
-    // ---- Compute MVP ----
+    // ---- MVP ----
     float t = (float)SDL_GetTicks() / 1000.0f;
     glm::mat4 model = glm::rotate(glm::mat4(1.0f), t * 0.8f, glm::vec3(0.4f, 1.0f, 0.2f));
     glm::mat4 view  = glm::lookAt(glm::vec3(2.5f, 2.5f, 2.5f),
@@ -660,47 +782,72 @@ void Engine::begin_frame() {
                                   glm::vec3(0.0f, 1.0f, 0.0f));
     float aspect = (float)offscreen_width_ / (float)offscreen_height_;
     glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
-    proj[1][1] *= -1.0f;  // WebGPU clip space: Y down
+    proj[1][1] *= -1.0f;
     glm::mat4 mvp = proj * view * model;
 
     struct { glm::mat4 mvp; glm::mat4 model; } ubo;
     ubo.mvp = mvp; ubo.model = model;
     wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0, &ubo, sizeof(ubo));
 
-    // ---- Render pass ----
-    WGPURenderPassColorAttachment color = {};
-    color.view       = offscreen_view_;
-    color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-    color.loadOp     = WGPULoadOp_Clear;
-    color.storeOp    = WGPUStoreOp_Store;
-    color.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+    // ---- Pass 1: geometry -> G-buffer ----
+    WGPURenderPassColorAttachment gbuf_att[3] = {};
+    WGPUTextureView gbuf_views[3] = {
+        gpu_.gbuf_albedo_view, gpu_.gbuf_normal_view, gpu_.gbuf_material_view
+    };
+    for (int i = 0; i < 3; ++i) {
+        gbuf_att[i].view       = gbuf_views[i];
+        gbuf_att[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        gbuf_att[i].loadOp     = WGPULoadOp_Clear;
+        gbuf_att[i].storeOp    = WGPUStoreOp_Store;
+        gbuf_att[i].clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
+    }
+    WGPURenderPassDepthStencilAttachment dep = {};
+    dep.view            = gpu_.depth_view;
+    dep.depthLoadOp     = WGPULoadOp_Clear;
+    dep.depthStoreOp    = WGPUStoreOp_Store;
+    dep.depthClearValue = 1.0f;
+    dep.depthReadOnly   = false;
 
-    WGPURenderPassDepthStencilAttachment depth = {};
-    depth.view            = gpu_.depth_view;
-    depth.depthLoadOp     = WGPULoadOp_Clear;
-    depth.depthStoreOp    = WGPUStoreOp_Store;
-    depth.depthClearValue = 1.0f;
-    depth.depthReadOnly   = false;
-
-    WGPURenderPassDescriptor pass = {};
-    pass.colorAttachmentCount     = 1;
-    pass.colorAttachments         = &color;
-    pass.depthStencilAttachment   = &depth;
+    WGPURenderPassDescriptor gpass = {};
+    gpass.colorAttachmentCount   = 3;
+    gpass.colorAttachments       = gbuf_att;
+    gpass.depthStencilAttachment = &dep;
 
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
-    WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &pass);
-    wgpuRenderPassEncoderSetPipeline(rp, geometry_pipeline_);
-    wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(rp, 0, gpu_.vertex_buffer, 0, 24 * 32);
-    wgpuRenderPassEncoderSetIndexBuffer(rp, gpu_.index_buffer,
+    WGPURenderPassEncoder grp = wgpuCommandEncoderBeginRenderPass(enc, &gpass);
+    wgpuRenderPassEncoderSetPipeline(grp, geometry_pipeline_);
+    wgpuRenderPassEncoderSetBindGroup(grp, 0, gpu_.uniform_bind_group, 0, nullptr);
+    wgpuRenderPassEncoderSetVertexBuffer(grp, 0, gpu_.vertex_buffer, 0, 24 * 32);
+    wgpuRenderPassEncoderSetIndexBuffer(grp, gpu_.index_buffer,
                                         WGPUIndexFormat_Uint16, 0, 36 * 2);
-    wgpuRenderPassEncoderDrawIndexed(rp, 36, 1, 0, 0, 0);
-    wgpuRenderPassEncoderEnd(rp);
+    wgpuRenderPassEncoderDrawIndexed(grp, 36, 1, 0, 0, 0);
+    wgpuRenderPassEncoderEnd(grp);
+    wgpuRenderPassEncoderRelease(grp);
+
+    // ---- Pass 2: composite -> offscreen ----
+    WGPURenderPassColorAttachment catt = {};
+    catt.view       = offscreen_view_;
+    catt.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    catt.loadOp     = WGPULoadOp_Clear;
+    catt.storeOp    = WGPUStoreOp_Store;
+    catt.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+
+    WGPURenderPassDescriptor cpass = {};
+    cpass.colorAttachmentCount   = 1;
+    cpass.colorAttachments       = &catt;
+    cpass.depthStencilAttachment = nullptr;
+
+    WGPURenderPassEncoder crp = wgpuCommandEncoderBeginRenderPass(enc, &cpass);
+    wgpuRenderPassEncoderSetPipeline(crp, composite_pipeline_);
+    wgpuRenderPassEncoderSetBindGroup(crp, 0, gpu_.uniform_bind_group, 0, nullptr);
+    wgpuRenderPassEncoderSetBindGroup(crp, 1, composite_bg_, 0, nullptr);
+    wgpuRenderPassEncoderDraw(crp, 3, 1, 0, 0);
+    wgpuRenderPassEncoderEnd(crp);
+    wgpuRenderPassEncoderRelease(crp);
 
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
     wgpuQueueSubmit(gpu_.queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
-    wgpuRenderPassEncoderRelease(rp);
     wgpuCommandEncoderRelease(enc);
 
     // ---- Present ----
@@ -728,6 +875,7 @@ void Engine::begin_frame() {
         }
     }
 }
+
 
 
 void Engine::end_frame() {}
