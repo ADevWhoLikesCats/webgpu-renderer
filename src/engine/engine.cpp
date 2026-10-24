@@ -243,9 +243,11 @@ bool Engine::init(const char* app_name,
         // size of the 192-byte UBO). Sized for 8192 objects = 2 MB.
         // Dynamic offsets let us bind the same buffer with different
         // per-draw offsets, so each draw sees its own uniform data.
+        // Per-object uniform data in a storage buffer.
+        // WGSL array stride for Uniforms { mat4, mat4, vec4, vec4 } is 160.
         WGPUBufferDescriptor bd = {};
-        bd.size  = 256ull * 8192ull;
-        bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        bd.size  = 160ull * 8192ull;
+        bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
         gpu_.uniform_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         if (!gpu_.uniform_buffer) {
             err = "uniform buffer creation failed";
@@ -259,9 +261,9 @@ bool Engine::init(const char* app_name,
         WGPUBindGroupLayoutEntry entry = {};
         entry.binding    = 0;
         entry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-        entry.buffer.type            = WGPUBufferBindingType_Uniform;
-        entry.buffer.hasDynamicOffset = true;
-        entry.buffer.minBindingSize   = 192;
+        entry.buffer.type            = WGPUBufferBindingType_ReadOnlyStorage;
+        entry.buffer.hasDynamicOffset = false;
+        entry.buffer.minBindingSize   = 0;
 
         WGPUBindGroupLayoutDescriptor bgl_desc = {};
         bgl_desc.entryCount = 1;
@@ -277,7 +279,7 @@ bool Engine::init(const char* app_name,
         bg_entry.binding = 0;
         bg_entry.buffer  = gpu_.uniform_buffer;
         bg_entry.offset  = 0;
-        bg_entry.size    = 192;  // one slice; dynamic offset picks which object
+        bg_entry.size    = 160ull * 8192ull;  // whole buffer
 
         WGPUBindGroupDescriptor bg_desc = {};
         bg_desc.layout     = gpu_.uniform_bgl;
@@ -773,7 +775,7 @@ static WGPURenderPipeline make_geometry_pipeline(
             material_color : vec4<f32>,
             material_params : vec4<f32>,  // x=roughness, y=metallic, z=ao
         };
-        @group(0) @binding(0) var<uniform> u : Uniforms;
+        @group(0) @binding(0) var<storage, read> u_arr : array<Uniforms, 8192>;
 
         @group(1) @binding(0) var t_base   : texture_2d<f32>;
         @group(1) @binding(1) var t_mr     : texture_2d<f32>;
@@ -785,6 +787,7 @@ static WGPURenderPipeline make_geometry_pipeline(
             @location(1) normal  : vec3<f32>,
             @location(2) uv      : vec2<f32>,
             @location(3) tangent : vec4<f32>,
+            @location(4) obj_idx : u32,
         };
         struct VSOut {
             @builtin(position) clip : vec4<f32>,
@@ -792,11 +795,13 @@ static WGPURenderPipeline make_geometry_pipeline(
             @location(1) tangent : vec3<f32>,
             @location(2) bitan   : vec3<f32>,
             @location(3) uv      : vec2<f32>,
+            @location(4) @interpolate(flat) obj_idx : u32,
         };
 
         @vertex
         fn vs_main(in : VSIn) -> VSOut {
             var out : VSOut;
+            let u = u_arr[in.obj_idx];
             out.clip = u.mvp * vec4<f32>(in.pos, 1.0);
 
             let N = normalize(in.normal);
@@ -807,6 +812,7 @@ static WGPURenderPipeline make_geometry_pipeline(
             out.tangent = T;
             out.bitan   = B;
             out.uv      = in.uv;
+            out.obj_idx = in.obj_idx;
             return out;
         }
 
@@ -829,6 +835,7 @@ static WGPURenderPipeline make_geometry_pipeline(
             let mr_sample   = textureSample(t_mr,     s_mat, in.uv);
             let nrm_sample  = textureSample(t_normal, s_mat, in.uv);
 
+            let u = u_arr[in.obj_idx];
             let albedo = u.material_color.rgb * base_sample.rgb;
 
             let roughness = clamp(u.material_params.x * mr_sample.g, 0.04, 1.0);
@@ -872,24 +879,35 @@ static WGPURenderPipeline make_geometry_pipeline(
     fs.targetCount = 3;
     fs.targets     = cts;
 
-    WGPUVertexAttribute attrs[4] = {};
-    attrs[0].format = WGPUVertexFormat_Float32x3; attrs[0].offset = 0;  attrs[0].shaderLocation = 0;
-    attrs[1].format = WGPUVertexFormat_Float32x3; attrs[1].offset = 12; attrs[1].shaderLocation = 1;
-    attrs[2].format = WGPUVertexFormat_Float32x2; attrs[2].offset = 24; attrs[2].shaderLocation = 2;
-    attrs[3].format = WGPUVertexFormat_Float32x4; attrs[3].offset = 32; attrs[3].shaderLocation = 3;
+    WGPUVertexAttribute vert_attrs[4] = {};
+    vert_attrs[0].format = WGPUVertexFormat_Float32x3; vert_attrs[0].offset = 0;  vert_attrs[0].shaderLocation = 0;
+    vert_attrs[1].format = WGPUVertexFormat_Float32x3; vert_attrs[1].offset = 12; vert_attrs[1].shaderLocation = 1;
+    vert_attrs[2].format = WGPUVertexFormat_Float32x2; vert_attrs[2].offset = 24; vert_attrs[2].shaderLocation = 2;
+    vert_attrs[3].format = WGPUVertexFormat_Float32x4; vert_attrs[3].offset = 32; vert_attrs[3].shaderLocation = 3;
+    WGPUVertexBufferLayout vbl_vert = {};
+    vbl_vert.stepMode = WGPUVertexStepMode_Vertex;
+    vbl_vert.arrayStride = 48;
+    vbl_vert.attributeCount = 4;
+    vbl_vert.attributes = vert_attrs;
 
-    WGPUVertexBufferLayout vbl = {};
-    vbl.stepMode = WGPUVertexStepMode_Vertex;
-    vbl.arrayStride = 48;
-    vbl.attributeCount = 4;
-    vbl.attributes = attrs;
+    WGPUVertexAttribute inst_attr = {};
+    inst_attr.format = WGPUVertexFormat_Uint32;
+    inst_attr.offset = 0;
+    inst_attr.shaderLocation = 4;
+    WGPUVertexBufferLayout vbl_inst = {};
+    vbl_inst.stepMode = WGPUVertexStepMode_Instance;
+    vbl_inst.arrayStride = 4;
+    vbl_inst.attributeCount = 1;
+    vbl_inst.attributes = &inst_attr;
+
+    WGPUVertexBufferLayout vbls[2] = { vbl_vert, vbl_inst };
 
     WGPUVertexState vs = {};
     vs.module = mod;
     vs.entryPoint.data = "vs_main";
     vs.entryPoint.length = 7;
-    vs.bufferCount = 1;
-    vs.buffers = &vbl;
+    vs.bufferCount = 2;
+    vs.buffers = vbls;
 
     WGPUPrimitiveState prim = {};
     prim.topology = WGPUPrimitiveTopology_TriangleList;
@@ -1361,7 +1379,7 @@ void Engine::begin_frame() {
                 // written between draws and the queue is serialized, this is
                 // safe (though not optimal — an instanced approach would do
                 // one write + one draw call for all objects).
-                const uint32_t kStride = 256;
+                const uint32_t kStride = 160;
                 const uint32_t N = (uint32_t)scene_.objects.size();
 
                 // Frustum cull: build visible list + their uniforms in one pass.
@@ -1374,7 +1392,6 @@ void Engine::begin_frame() {
                     glm::mat4 model;
                     glm::vec4 material_color;
                     glm::vec4 material_params;
-                    uint8_t   pad[32];
                 };
                 std::vector<uint8_t> uniform_data;
                 uniform_data.reserve((size_t)N * kStride);
@@ -1416,16 +1433,41 @@ void Engine::begin_frame() {
                                          uniform_data.data(), uniform_data.size());
                 }
 
+                // Per-instance vertex buffer: one u32 per visible object = the
+                // VISIBLE-SLOT index (0..N-1). The shader reads u_arr[obj_idx],
+                // and uniforms were packed in visible-slot order, so obj_idx
+                // must equal the visible slot, not the object index.
+                static WGPUBuffer instance_idx_buffer = nullptr;
+                static uint64_t instance_idx_capacity = 0;
+                uint64_t needed = (uint64_t)visible.size() * 4;
+                if (instance_idx_buffer == nullptr || instance_idx_capacity < needed) {
+                    if (instance_idx_buffer) wgpuBufferRelease(instance_idx_buffer);
+                    WGPUBufferDescriptor ibd = {};
+                    ibd.size  = std::max<uint64_t>(needed, 256);
+                    ibd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+                    instance_idx_buffer = wgpuDeviceCreateBuffer(gpu_.device, &ibd);
+                    instance_idx_capacity = ibd.size;
+                }
+                {
+                    std::vector<uint32_t> instance_indices(visible.size());
+                    for (size_t i = 0; i < visible.size(); ++i)
+                        instance_indices[i] = (uint32_t)i;  // VISIBLE SLOT, not object index
+                    wgpuQueueWriteBuffer(gpu_.queue, instance_idx_buffer, 0,
+                                         instance_indices.data(), instance_indices.size() * 4);
+                }
+
+                wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
+
                 for (uint32_t slot = 0; slot < (uint32_t)visible.size(); ++slot) {
                     const auto& obj  = scene_.objects[visible[slot]];
                     const auto& mesh = scene_.meshes[obj.mesh_index];
-                    uint32_t offset  = slot * kStride;
 
-                    wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 1, &offset);
                     wgpuRenderPassEncoderSetBindGroup(rp, 1,
                         scene_.materials[obj.material_index].bind_group, 0, nullptr);
                     wgpuRenderPassEncoderSetVertexBuffer(rp, 0, mesh.vertex_buffer, 0,
                         mesh.vertex_count * 48);
+                    wgpuRenderPassEncoderSetVertexBuffer(rp, 1, instance_idx_buffer,
+                        (uint64_t)slot * 4, 4);
                     wgpuRenderPassEncoderSetIndexBuffer(rp, mesh.index_buffer,
                         WGPUIndexFormat_Uint32, 0, mesh.index_count * 4);
                     wgpuRenderPassEncoderDrawIndexed(rp, mesh.index_count, 1, 0, 0, 0);
@@ -1487,8 +1529,7 @@ void Engine::begin_frame() {
 
             WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &cp);
             wgpuRenderPassEncoderSetPipeline(rp, composite_pipeline_);
-            uint32_t zero_off = 0;
-            wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 1, &zero_off);
+            wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(rp, 1, composite_bg_, 0, nullptr);
             wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(rp);
