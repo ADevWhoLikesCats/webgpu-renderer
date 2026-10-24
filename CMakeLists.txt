@@ -72,6 +72,7 @@ FetchContent_MakeAvailable(glm)
 add_library(photonix STATIC
     src/engine/api.cpp
     src/engine/engine.cpp
+    src/engine/frame_graph.cpp
     src/sdl3webgpu.c
 )
 

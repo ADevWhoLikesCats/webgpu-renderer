@@ -680,15 +680,94 @@ static WGPURenderPipeline make_composite_pipeline(
                 n.z));
         }
 
+        // ---- Cook-Torrance BRDF ----
+        const PI : f32 = 3.14159265359;
+
+        // Trowbridge-Reitz / GGX normal distribution function.
+        fn D_GGX(NdotH : f32, roughness : f32) -> f32 {
+            let a  = roughness * roughness;
+            let a2 = a * a;
+            let d  = NdotH * NdotH * (a2 - 1.0) + 1.0;
+            return a2 / (PI * d * d + 1e-6);
+        }
+
+        // Schlick-GGX geometry (Smith's method, single term).
+        fn G_SchlickGGX(NdotV : f32, roughness : f32) -> f32 {
+            let r = roughness + 1.0;
+            let k = (r * r) / 8.0;
+            return NdotV / (NdotV * (1.0 - k) + k + 1e-6);
+        }
+        fn G_Smith(NdotV : f32, NdotL : f32, roughness : f32) -> f32 {
+            return G_SchlickGGX(NdotV, roughness) * G_SchlickGGX(NdotL, roughness);
+        }
+
+        // Fresnel-Schlick approximation.
+        fn F_Schlick(F0 : vec3<f32>, cosTheta : f32) -> vec3<f32> {
+            return F0 + (vec3<f32>(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
+        }
+
         @fragment
         fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
-            let albedo = textureSample(t_albedo, s_gbuf, in.uv).rgb;
-            let n_enc  = textureSample(t_normal, s_gbuf, in.uv).rg;
-            let N = oct_decode(n_enc);
-            let L = normalize(vec3<f32>(0.4, 0.8, 0.3));
+            let albedo_sample   = textureSample(t_albedo,   s_gbuf, in.uv);
+            let normal_sample   = textureSample(t_normal,   s_gbuf, in.uv);
+            let material_sample = textureSample(t_material, s_gbuf, in.uv);
+
+            // Skip shading where nothing was drawn (depth-test failed pixels
+            // still have our clear color; use a rough heuristic).
+            if (albedo_sample.a < 0.01) {
+                return vec4<f32>(0.05, 0.05, 0.1, 1.0);
+            }
+
+            let albedo    = albedo_sample.rgb;
+            let N         = oct_decode(normal_sample.rg);
+            let roughness = clamp(material_sample.r, 0.04, 1.0);
+            let metallic  = clamp(material_sample.g, 0.0, 1.0);
+            let ao        = clamp(material_sample.b, 0.0, 1.0);
+
+            // View direction: camera at (2.5, 2.5, 2.5) looking at origin.
+            // Reconstruct V in world space (approximation — not per-pixel).
+            let V = normalize(vec3<f32>(2.5, 2.5, 2.5));
+
+            // Single directional light.
+            let L       = normalize(vec3<f32>(0.4, 0.8, 0.3));
+            let radiance = vec3<f32>(1.0, 0.95, 0.85) * 3.0;  // warm sun
+
+            let H     = normalize(V + L);
             let NdotL = max(dot(N, L), 0.0);
-            let color = albedo * (0.15 + NdotL);
-            return vec4<f32>(color, 1.0);
+            let NdotV = max(dot(N, V), 0.001);
+            let NdotH = max(dot(N, H), 0.0);
+            let VdotH = max(dot(V, H), 0.0);
+
+            // F0: dielectric (0.04) mixed toward albedo by metallic.
+            let F0 = mix(vec3<f32>(0.04), albedo, metallic);
+
+            // Specular term: Cook-Torrance.
+            let D = D_GGX(NdotH, roughness);
+            let G = G_Smith(NdotV, NdotL, roughness);
+            let F = F_Schlick(F0, VdotH);
+            let specular = (D * G * F) / (4.0 * NdotV * NdotL + 1e-4);
+
+            // Diffuse term: Lambert, energy-conserving (metals have no diffuse).
+            let kD = (vec3<f32>(1.0) - F) * (1.0 - metallic);
+            let diffuse = kD * albedo / PI;
+
+            let Lo = (diffuse + specular) * radiance * NdotL;
+
+            // Ambient: sky + ground, weighted by AO.
+            let up     = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
+            let sky    = mix(vec3<f32>(0.20, 0.22, 0.28),
+                             vec3<f32>(0.40, 0.55, 0.85), up);
+            let ground = vec3<f32>(0.10, 0.08, 0.06);
+            let ambient_irradiance = mix(ground, sky, up) * ao;
+            let kD_ambient = (vec3<f32>(1.0) - F_Schlick(F0, NdotV)) * (1.0 - metallic);
+            let ambient = kD_ambient * albedo * ambient_irradiance;
+
+            let color = Lo + ambient;
+
+            // Tone mapping (ACES-ish) then sRGB handled by the swapchain.
+            let x = color * 1.0;
+            let tonemapped = (x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14);
+            return vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
         }
     )";
 
@@ -700,30 +779,30 @@ static WGPURenderPipeline make_composite_pipeline(
     WGPUShaderModuleDescriptor smd = {};
     smd.nextInChain = &wgsl_src.chain;
     WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
-    if (!mod) { std::fprintf(stderr, "[engine] composite shader failed\n"); return nullptr; }
+    if (!mod) { std::fprintf(stderr, "[engine] PBR composite shader failed\n"); return nullptr; }
 
     WGPUColorTargetState ct = {};
-    ct.format = color_format;
+    ct.format    = color_format;
     ct.writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState fs = {};
-    fs.module = mod;
-    fs.entryPoint.data = "fs_main";
+    fs.module      = mod;
+    fs.entryPoint.data   = "fs_main";
     fs.entryPoint.length = 7;
     fs.targetCount = 1;
-    fs.targets = &ct;
+    fs.targets     = &ct;
 
     WGPUVertexState vs = {};
-    vs.module = mod;
-    vs.entryPoint.data = "vs_main";
+    vs.module      = mod;
+    vs.entryPoint.data   = "vs_main";
     vs.entryPoint.length = 7;
     vs.bufferCount = 0;
-    vs.buffers = nullptr;
+    vs.buffers     = nullptr;
 
     WGPUPrimitiveState prim = {};
-    prim.topology = WGPUPrimitiveTopology_TriangleList;
+    prim.topology  = WGPUPrimitiveTopology_TriangleList;
     prim.frontFace = WGPUFrontFace_CCW;
-    prim.cullMode = WGPUCullMode_None;
+    prim.cullMode  = WGPUCullMode_None;
 
     WGPUMultisampleState ms = {};
     ms.count = 1;
@@ -732,24 +811,25 @@ static WGPURenderPipeline make_composite_pipeline(
     WGPUBindGroupLayout layouts[2] = { uniform_bgl, gbuf_bgl };
     WGPUPipelineLayoutDescriptor pl_desc = {};
     pl_desc.bindGroupLayoutCount = 2;
-    pl_desc.bindGroupLayouts = layouts;
+    pl_desc.bindGroupLayouts     = layouts;
     WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
     if (!pl) { std::fprintf(stderr, "[engine] composite layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
 
     WGPURenderPipelineDescriptor pd = {};
-    pd.layout = pl;
-    pd.vertex = vs;
-    pd.primitive = prim;
-    pd.multisample = ms;
-    pd.fragment = &fs;
+    pd.layout       = pl;
+    pd.vertex       = vs;
+    pd.primitive    = prim;
+    pd.multisample  = ms;
+    pd.fragment     = &fs;
     pd.depthStencil = nullptr;
 
     WGPURenderPipeline pipe = wgpuDeviceCreateRenderPipeline(device, &pd);
     wgpuPipelineLayoutRelease(pl);
     wgpuShaderModuleRelease(mod);
-    std::fprintf(stderr, "[engine] composite pipeline: %p\n", (void*)pipe);
+    std::fprintf(stderr, "[engine] PBR composite pipeline: %p\n", (void*)pipe);
     return pipe;
 }
+
 
 
 
@@ -759,7 +839,7 @@ static WGPURenderPipeline make_composite_pipeline(
 void Engine::begin_frame() {
     if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
-    // Lazy pipeline creation.
+    // Lazy pipeline creation (outside the graph — pipelines are persistent).
     if (!geometry_pipeline_ready_) {
         geometry_pipeline_ = make_geometry_pipeline(
             gpu_.device, offscreen_format_, gpu_.uniform_bgl);
@@ -789,62 +869,105 @@ void Engine::begin_frame() {
     ubo.mvp = mvp; ubo.model = model;
     wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0, &ubo, sizeof(ubo));
 
-    // ---- Pass 1: geometry -> G-buffer ----
-    WGPURenderPassColorAttachment gbuf_att[3] = {};
-    WGPUTextureView gbuf_views[3] = {
-        gpu_.gbuf_albedo_view, gpu_.gbuf_normal_view, gpu_.gbuf_material_view
-    };
-    for (int i = 0; i < 3; ++i) {
-        gbuf_att[i].view       = gbuf_views[i];
-        gbuf_att[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-        gbuf_att[i].loadOp     = WGPULoadOp_Clear;
-        gbuf_att[i].storeOp    = WGPUStoreOp_Store;
-        gbuf_att[i].clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
+    // ---- Frame graph setup ----
+    // Resources persist across frames; register once per session.
+    // First-frame guard: if we haven't registered resources yet, do it now.
+    static bool resources_registered = false;
+    PxResourceId r_uniform = PX_RESOURCE_INVALID;
+    PxResourceId r_albedo  = PX_RESOURCE_INVALID;
+    PxResourceId r_normal  = PX_RESOURCE_INVALID;
+    PxResourceId r_material= PX_RESOURCE_INVALID;
+    PxResourceId r_depth   = PX_RESOURCE_INVALID;
+    PxResourceId r_offscreen = PX_RESOURCE_INVALID;
+    if (!resources_registered) {
+        fg_.clear();
+        r_uniform   = fg_.register_resource("uniform_buffer",  nullptr);
+        r_albedo    = fg_.register_resource("gbuf_albedo",     gpu_.gbuf_albedo_view);
+        r_normal    = fg_.register_resource("gbuf_normal",     gpu_.gbuf_normal_view);
+        r_material  = fg_.register_resource("gbuf_material",   gpu_.gbuf_material_view);
+        r_depth     = fg_.register_resource("depth",           gpu_.depth_view);
+        r_offscreen = fg_.register_resource("offscreen_color", offscreen_view_);
+        resources_registered = true;
+    } else {
+        // Look up the cached ids (registered in same order as the block above).
+        r_uniform   = 0;
+        r_albedo    = 1;
+        r_normal    = 2;
+        r_material  = 3;
+        r_depth     = 4;
+        r_offscreen = 5;
     }
-    WGPURenderPassDepthStencilAttachment dep = {};
-    dep.view            = gpu_.depth_view;
-    dep.depthLoadOp     = WGPULoadOp_Clear;
-    dep.depthStoreOp    = WGPUStoreOp_Store;
-    dep.depthClearValue = 1.0f;
-    dep.depthReadOnly   = false;
 
-    WGPURenderPassDescriptor gpass = {};
-    gpass.colorAttachmentCount   = 3;
-    gpass.colorAttachments       = gbuf_att;
-    gpass.depthStencilAttachment = &dep;
+    fg_.reset_passes();
 
+    // ---- Geometry pass: writes G-buffer + depth ----
+    fg_.add_pass("geometry",
+        /*reads=*/  { r_uniform },
+        /*writes=*/ { r_albedo, r_normal, r_material, r_depth },
+        [&](WGPUCommandEncoder enc) {
+            WGPURenderPassColorAttachment gbuf_att[3] = {};
+            WGPUTextureView gbuf_views[3] = {
+                gpu_.gbuf_albedo_view, gpu_.gbuf_normal_view, gpu_.gbuf_material_view
+            };
+            for (int i = 0; i < 3; ++i) {
+                gbuf_att[i].view       = gbuf_views[i];
+                gbuf_att[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+                gbuf_att[i].loadOp     = WGPULoadOp_Clear;
+                gbuf_att[i].storeOp    = WGPUStoreOp_Store;
+                gbuf_att[i].clearValue = {0.0f, 0.0f, 0.0f, 0.0f};
+            }
+            WGPURenderPassDepthStencilAttachment dep = {};
+            dep.view            = gpu_.depth_view;
+            dep.depthLoadOp     = WGPULoadOp_Clear;
+            dep.depthStoreOp    = WGPUStoreOp_Store;
+            dep.depthClearValue = 1.0f;
+            dep.depthReadOnly   = false;
+
+            WGPURenderPassDescriptor gp = {};
+            gp.colorAttachmentCount   = 3;
+            gp.colorAttachments       = gbuf_att;
+            gp.depthStencilAttachment = &dep;
+
+            WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &gp);
+            wgpuRenderPassEncoderSetPipeline(rp, geometry_pipeline_);
+            wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
+            wgpuRenderPassEncoderSetVertexBuffer(rp, 0, gpu_.vertex_buffer, 0, 24 * 32);
+            wgpuRenderPassEncoderSetIndexBuffer(rp, gpu_.index_buffer,
+                                                WGPUIndexFormat_Uint16, 0, 36 * 2);
+            wgpuRenderPassEncoderDrawIndexed(rp, 36, 1, 0, 0, 0);
+            wgpuRenderPassEncoderEnd(rp);
+            wgpuRenderPassEncoderRelease(rp);
+        });
+
+    // ---- Composite pass: reads G-buffer, writes offscreen color ----
+    fg_.add_pass("composite",
+        /*reads=*/  { r_albedo, r_normal, r_material, r_uniform },
+        /*writes=*/ { r_offscreen },
+        [&](WGPUCommandEncoder enc) {
+            WGPURenderPassColorAttachment catt = {};
+            catt.view       = offscreen_view_;
+            catt.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt.loadOp     = WGPULoadOp_Clear;
+            catt.storeOp    = WGPUStoreOp_Store;
+            catt.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+
+            WGPURenderPassDescriptor cp = {};
+            cp.colorAttachmentCount   = 1;
+            cp.colorAttachments       = &catt;
+            cp.depthStencilAttachment = nullptr;
+
+            WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &cp);
+            wgpuRenderPassEncoderSetPipeline(rp, composite_pipeline_);
+            wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(rp, 1, composite_bg_, 0, nullptr);
+            wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(rp);
+            wgpuRenderPassEncoderRelease(rp);
+        });
+
+    // ---- Execute ----
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
-    WGPURenderPassEncoder grp = wgpuCommandEncoderBeginRenderPass(enc, &gpass);
-    wgpuRenderPassEncoderSetPipeline(grp, geometry_pipeline_);
-    wgpuRenderPassEncoderSetBindGroup(grp, 0, gpu_.uniform_bind_group, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(grp, 0, gpu_.vertex_buffer, 0, 24 * 32);
-    wgpuRenderPassEncoderSetIndexBuffer(grp, gpu_.index_buffer,
-                                        WGPUIndexFormat_Uint16, 0, 36 * 2);
-    wgpuRenderPassEncoderDrawIndexed(grp, 36, 1, 0, 0, 0);
-    wgpuRenderPassEncoderEnd(grp);
-    wgpuRenderPassEncoderRelease(grp);
-
-    // ---- Pass 2: composite -> offscreen ----
-    WGPURenderPassColorAttachment catt = {};
-    catt.view       = offscreen_view_;
-    catt.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-    catt.loadOp     = WGPULoadOp_Clear;
-    catt.storeOp    = WGPUStoreOp_Store;
-    catt.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
-
-    WGPURenderPassDescriptor cpass = {};
-    cpass.colorAttachmentCount   = 1;
-    cpass.colorAttachments       = &catt;
-    cpass.depthStencilAttachment = nullptr;
-
-    WGPURenderPassEncoder crp = wgpuCommandEncoderBeginRenderPass(enc, &cpass);
-    wgpuRenderPassEncoderSetPipeline(crp, composite_pipeline_);
-    wgpuRenderPassEncoderSetBindGroup(crp, 0, gpu_.uniform_bind_group, 0, nullptr);
-    wgpuRenderPassEncoderSetBindGroup(crp, 1, composite_bg_, 0, nullptr);
-    wgpuRenderPassEncoderDraw(crp, 3, 1, 0, 0);
-    wgpuRenderPassEncoderEnd(crp);
-    wgpuRenderPassEncoderRelease(crp);
-
+    fg_.execute(enc);
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
     wgpuQueueSubmit(gpu_.queue, 1, &cmd);
     wgpuCommandBufferRelease(cmd);
@@ -875,6 +998,7 @@ void Engine::begin_frame() {
         }
     }
 }
+
 
 
 

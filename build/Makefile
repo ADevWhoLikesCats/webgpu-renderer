@@ -324,6 +324,30 @@ src/engine/engine.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/engine.cpp.s
 .PHONY : src/engine/engine.cpp.s
 
+src/engine/frame_graph.o: src/engine/frame_graph.cpp.o
+.PHONY : src/engine/frame_graph.o
+
+# target to build an object file
+src/engine/frame_graph.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o
+.PHONY : src/engine/frame_graph.cpp.o
+
+src/engine/frame_graph.i: src/engine/frame_graph.cpp.i
+.PHONY : src/engine/frame_graph.i
+
+# target to preprocess a source file
+src/engine/frame_graph.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.i
+.PHONY : src/engine/frame_graph.cpp.i
+
+src/engine/frame_graph.s: src/engine/frame_graph.cpp.s
+.PHONY : src/engine/frame_graph.s
+
+# target to generate assembly for a file
+src/engine/frame_graph.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/photonix.dir/build.make CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.s
+.PHONY : src/engine/frame_graph.cpp.s
+
 src/sdl3webgpu.o: src/sdl3webgpu.c.o
 .PHONY : src/sdl3webgpu.o
 
@@ -376,6 +400,9 @@ help:
 	@echo "... src/engine/engine.o"
 	@echo "... src/engine/engine.i"
 	@echo "... src/engine/engine.s"
+	@echo "... src/engine/frame_graph.o"
+	@echo "... src/engine/frame_graph.i"
+	@echo "... src/engine/frame_graph.s"
 	@echo "... src/sdl3webgpu.o"
 	@echo "... src/sdl3webgpu.i"
 	@echo "... src/sdl3webgpu.s"

@@ -11,6 +11,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c" "CMakeFiles/photonix.dir/src/sdl3webgpu.c.o" "gcc" "CMakeFiles/photonix.dir/src/sdl3webgpu.c.o.d"
   "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/api.cpp" "CMakeFiles/photonix.dir/src/engine/api.cpp.o" "gcc" "CMakeFiles/photonix.dir/src/engine/api.cpp.o.d"
   "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/engine.cpp" "CMakeFiles/photonix.dir/src/engine/engine.cpp.o" "gcc" "CMakeFiles/photonix.dir/src/engine/engine.cpp.o.d"
+  "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/frame_graph.cpp" "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o" "gcc" "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

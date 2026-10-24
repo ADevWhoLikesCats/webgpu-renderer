@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <webgpu/webgpu.h>
+#include "frame_graph.h"
 
 #include <glm/glm.hpp>
 
@@ -102,6 +103,7 @@ public:
                           uint32_t* backend, uint32_t* vendor, uint32_t* device_id);
 
 private:
+    FrameGraph fg_;
     GpuContext gpu_;
     Surface    surface_;
     Scene      scene_;

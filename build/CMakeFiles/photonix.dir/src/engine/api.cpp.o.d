@@ -235,6 +235,15 @@ CMakeFiles/photonix.dir/src/engine/api.cpp.o: \
  /usr/include/c++/15/tr1/riemann_zeta.tcc \
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/dawn/dawn_version.h \
  /usr/include/c++/15/array \
+ /home/hrishikesh/Downloads/photonix-rewrite/src/engine/frame_graph.h \
+ /usr/include/c++/15/functional /usr/include/c++/15/bits/std_function.h \
+ /usr/include/c++/15/unordered_map \
+ /usr/include/c++/15/bits/unordered_map.h \
+ /usr/include/c++/15/bits/hashtable.h \
+ /usr/include/c++/15/bits/hashtable_policy.h \
+ /usr/include/c++/15/bits/enable_special_members.h \
+ /usr/include/c++/15/bits/node_handle.h \
+ /usr/include/c++/15/bits/erase_if.h \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/glm.hpp \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/_fixes.hpp \
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/setup.hpp \

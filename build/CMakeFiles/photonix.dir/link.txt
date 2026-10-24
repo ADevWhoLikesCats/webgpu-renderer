@@ -1,2 +1,2 @@
-/usr/bin/ar qc libphotonix.a CMakeFiles/photonix.dir/src/engine/api.cpp.o CMakeFiles/photonix.dir/src/engine/engine.cpp.o CMakeFiles/photonix.dir/src/sdl3webgpu.c.o
+/usr/bin/ar qc libphotonix.a CMakeFiles/photonix.dir/src/engine/api.cpp.o CMakeFiles/photonix.dir/src/engine/engine.cpp.o CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o CMakeFiles/photonix.dir/src/sdl3webgpu.c.o
 /usr/bin/ranlib libphotonix.a
