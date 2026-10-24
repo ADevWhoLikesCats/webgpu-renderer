@@ -1,49 +1,49 @@
 [
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build",
-  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -g -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/api.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/api.cpp",
+  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -O3 -DNDEBUG -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/api.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/api.cpp",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/api.cpp",
   "output": "CMakeFiles/photonix.dir/src/engine/api.cpp.o"
 },
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build",
-  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -g -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/engine.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/engine.cpp",
+  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -O3 -DNDEBUG -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/engine.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/engine.cpp",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/engine.cpp",
   "output": "CMakeFiles/photonix.dir/src/engine/engine.cpp.o"
 },
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build",
-  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -g -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/frame_graph.cpp",
+  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -O3 -DNDEBUG -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/frame_graph.cpp",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/frame_graph.cpp",
   "output": "CMakeFiles/photonix.dir/src/engine/frame_graph.cpp.o"
 },
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build",
-  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -g -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp",
+  "command": "/usr/bin/c++ -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -O3 -DNDEBUG -std=gnu++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/src/engine/tinygltf_impl.cpp",
   "output": "CMakeFiles/photonix.dir/src/engine/tinygltf_impl.cpp.o"
 },
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build",
-  "command": "/usr/bin/cc -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -g -std=gnu11 -fPIC -o CMakeFiles/photonix.dir/src/sdl3webgpu.c.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c",
+  "command": "/usr/bin/cc -DENGINE_BUILDING -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -I/home/hrishikesh/Downloads/photonix-rewrite/src/engine -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include -I/home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -isystem /home/hrishikesh/Downloads/Dawn/include -isystem /usr/include/bullet -O3 -DNDEBUG -std=gnu11 -fPIC -o CMakeFiles/photonix.dir/src/sdl3webgpu.c.o -c /home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c",
   "output": "CMakeFiles/photonix.dir/src/sdl3webgpu.c.o"
 },
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build",
-  "command": "/usr/bin/c++  -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -g -std=gnu++20 -fPIE -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/engine_demo.dir/apps/demo/main.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/apps/demo/main.cpp",
+  "command": "/usr/bin/c++  -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src -I/home/hrishikesh/Downloads/photonix-rewrite/include -O3 -DNDEBUG -std=gnu++20 -fPIE -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/engine_demo.dir/apps/demo/main.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/apps/demo/main.cpp",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/apps/demo/main.cpp",
   "output": "CMakeFiles/engine_demo.dir/apps/demo/main.cpp.o"
 },
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-build",
-  "command": "/usr/bin/c++   -g -std=c++11 -fPIE -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/loader_example.dir/loader_example.cc.o -c /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src/loader_example.cc",
+  "command": "/usr/bin/c++   -O3 -DNDEBUG -std=c++11 -fPIE -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/loader_example.dir/loader_example.cc.o -c /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src/loader_example.cc",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src/loader_example.cc",
   "output": "_deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o"
 },
 {
   "directory": "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-build/glm",
-  "command": "/usr/bin/c++  -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -g -std=c++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/glm.dir/detail/glm.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/glm.cpp",
+  "command": "/usr/bin/c++  -I/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src -O3 -DNDEBUG -std=c++20 -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -o CMakeFiles/glm.dir/detail/glm.cpp.o -c /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/glm.cpp",
   "file": "/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/glm.cpp",
   "output": "_deps/glm-build/glm/CMakeFiles/glm.dir/detail/glm.cpp.o"
 }

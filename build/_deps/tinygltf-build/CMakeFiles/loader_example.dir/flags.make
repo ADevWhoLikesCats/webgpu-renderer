@@ -6,5 +6,5 @@ CXX_DEFINES =
 
 CXX_INCLUDES = 
 
-CXX_FLAGS = -g -std=c++11 -fPIE -fvisibility=hidden -fvisibility-inlines-hidden
+CXX_FLAGS = -O3 -DNDEBUG -std=c++11 -fPIE -fvisibility=hidden -fvisibility-inlines-hidden
 

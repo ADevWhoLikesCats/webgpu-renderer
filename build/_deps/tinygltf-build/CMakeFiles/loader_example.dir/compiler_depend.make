@@ -227,7 +227,9 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o: _deps/ti
   /usr/include/x86_64-linux-gnu/bits/pthreadtypes-arch.h \
   /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h \
   /usr/include/x86_64-linux-gnu/bits/sched.h \
+  /usr/include/x86_64-linux-gnu/bits/select-decl.h \
   /usr/include/x86_64-linux-gnu/bits/select.h \
+  /usr/include/x86_64-linux-gnu/bits/select2.h \
   /usr/include/x86_64-linux-gnu/bits/setjmp.h \
   /usr/include/x86_64-linux-gnu/bits/stat.h \
   /usr/include/x86_64-linux-gnu/bits/statx-generic.h \
@@ -235,8 +237,15 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o: _deps/ti
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-least.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio2-decl.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio2.h \
   /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
+  /usr/include/x86_64-linux-gnu/bits/stdlib-bsearch.h \
   /usr/include/x86_64-linux-gnu/bits/stdlib-float.h \
+  /usr/include/x86_64-linux-gnu/bits/stdlib.h \
+  /usr/include/x86_64-linux-gnu/bits/string_fortified.h \
+  /usr/include/x86_64-linux-gnu/bits/strings_fortified.h \
   /usr/include/x86_64-linux-gnu/bits/struct_mutex.h \
   /usr/include/x86_64-linux-gnu/bits/struct_rwlock.h \
   /usr/include/x86_64-linux-gnu/bits/struct_stat.h \
@@ -278,6 +287,8 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o: _deps/ti
   /usr/include/x86_64-linux-gnu/bits/waitflags.h \
   /usr/include/x86_64-linux-gnu/bits/waitstatus.h \
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
+  /usr/include/x86_64-linux-gnu/bits/wchar2-decl.h \
+  /usr/include/x86_64-linux-gnu/bits/wchar2.h \
   /usr/include/x86_64-linux-gnu/bits/wctype-wchar.h \
   /usr/include/x86_64-linux-gnu/bits/wordsize.h \
   /usr/include/x86_64-linux-gnu/bits/xopen_lim.h \
@@ -430,6 +441,18 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o:
 
 /usr/include/x86_64-linux-gnu/bits/types/mbstate_t.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/cookie_io_functions_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__sigset_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
+
 /usr/include/c++/15/cstdlib:
 
 /usr/include/c++/15/bits/requires_hosted.h:
@@ -464,11 +487,11 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o:
 
 /usr/include/c++/15/bits/uniform_int_dist.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
-
 /usr/include/c++/15/cassert:
 
 /usr/include/x86_64-linux-gnu/asm/errno.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdlib.h:
 
 /usr/include/c++/15/bits/stl_tempbuf.h:
 
@@ -486,6 +509,10 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o:
 
 /usr/include/c++/15/bits/gslice_array.h:
 
+/usr/include/x86_64-linux-gnu/bits/types/clock_t.h:
+
+/usr/include/c++/15/bits/slice_array.h:
+
 /usr/include/c++/15/bits/stl_uninitialized.h:
 
 /usr/include/c++/15/bits/stl_multimap.h:
@@ -499,6 +526,8 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o:
 /usr/include/c++/15/ext/alloc_traits.h:
 
 /usr/include/linux/types.h:
+
+/usr/include/x86_64-linux-gnu/bits/select2.h:
 
 /usr/include/c++/15/type_traits:
 
@@ -517,6 +546,8 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o:
 /usr/include/c++/15/bits/stl_tree.h:
 
 /usr/include/c++/15/forward_list:
+
+/usr/include/x86_64-linux-gnu/bits/stdio.h:
 
 /usr/include/c++/15/bits/postypes.h:
 
@@ -558,6 +589,8 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o:
 
 /usr/include/c++/15/bits/stl_relops.h:
 
+/usr/include/x86_64-linux-gnu/bits/wchar2-decl.h:
+
 /usr/include/c++/15/bits/version.h:
 
 /usr/include/c++/15/bits/concept_check.h:
@@ -571,8 +604,6 @@ _deps/tinygltf-build/CMakeFiles/loader_example.dir/loader_example.cc.o:
 /usr/include/c++/15/cstdint:
 
 /usr/include/c++/15/bits/atomic_base.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/cookie_io_functions_t.h:
 
 _deps/tinygltf-src/loader_example.cc:
 
@@ -605,10 +636,6 @@ _deps/tinygltf-src/json.hpp:
 /usr/include/c++/15/bits/stl_iterator_base_types.h:
 
 /usr/include/stdc-predef.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/struct___jmp_buf_tag.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/clockid_t.h:
 
 /usr/include/c++/15/bits/align.h:
 
@@ -706,8 +733,6 @@ _deps/tinygltf-src/stb_image_write.h:
 
 /usr/include/c++/15/bits/shared_ptr_atomic.h:
 
-/usr/include/c++/15/bits/atomic_lockfree_defines.h:
-
 /usr/include/c++/15/compare:
 
 /usr/include/c++/15/bits/valarray_before.h:
@@ -725,6 +750,12 @@ _deps/tinygltf-src/stb_image_write.h:
 /usr/include/c++/15/bit:
 
 /usr/include/pthread.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/error_t.h:
+
+/usr/include/c++/15/bits/stl_vector.h:
+
+/usr/include/c++/15/bits/functexcept.h:
 
 /usr/include/x86_64-linux-gnu/bits/mathcalls-macros.h:
 
@@ -756,8 +787,6 @@ _deps/tinygltf-src/stb_image.h:
 
 /usr/include/c++/15/bits/valarray_array.h:
 
-/usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
-
 /usr/include/c++/15/bits/ios_base.h:
 
 /usr/include/c++/15/debug/debug.h:
@@ -769,6 +798,12 @@ _deps/tinygltf-src/stb_image.h:
 /usr/include/c++/15/cwctype:
 
 /usr/include/x86_64-linux-gnu/asm/types.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/struct___jmp_buf_tag.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/clockid_t.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdlib-bsearch.h:
 
 /usr/include/c++/15/bits/gslice.h:
 
@@ -808,8 +843,6 @@ _deps/tinygltf-src/stb_image.h:
 
 /usr/include/c++/15/istream:
 
-/usr/include/x86_64-linux-gnu/bits/types/__sigset_t.h:
-
 /usr/include/linux/errno.h:
 
 /usr/include/c++/15/new:
@@ -843,10 +876,6 @@ _deps/tinygltf-src/tiny_gltf.h:
 /usr/include/errno.h:
 
 /usr/include/features.h:
-
-/usr/include/c++/15/bits/forward_list.h:
-
-/usr/include/linux/posix_types.h:
 
 /usr/include/x86_64-linux-gnu/bits/flt-eval-method.h:
 
@@ -902,6 +931,8 @@ _deps/tinygltf-src/tiny_gltf.h:
 
 /usr/include/x86_64-linux-gnu/bits/floatn.h:
 
+/usr/include/x86_64-linux-gnu/bits/wchar2.h:
+
 /usr/include/x86_64-linux-gnu/bits/fp-logb.h:
 
 /usr/include/x86_64-linux-gnu/bits/libc-header-start.h:
@@ -920,12 +951,6 @@ _deps/tinygltf-src/tiny_gltf.h:
 
 /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h:
 
-/usr/include/c++/15/bits/stl_vector.h:
-
-/usr/include/c++/15/bits/functexcept.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/error_t.h:
-
 /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h:
 
 /usr/include/x86_64-linux-gnu/bits/mathcalls.h:
@@ -935,6 +960,10 @@ _deps/tinygltf-src/tiny_gltf.h:
 /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h:
 
 /usr/include/x86_64-linux-gnu/bits/sched.h:
+
+/usr/include/c++/15/bits/atomic_lockfree_defines.h:
+
+/usr/include/x86_64-linux-gnu/bits/select-decl.h:
 
 /usr/include/x86_64-linux-gnu/bits/time.h:
 
@@ -952,13 +981,23 @@ _deps/tinygltf-src/tiny_gltf.h:
 
 /usr/include/x86_64-linux-gnu/bits/statx-generic.h:
 
+/usr/include/c++/15/bits/forward_list.h:
+
+/usr/include/linux/posix_types.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdio2-decl.h:
+
 /usr/include/x86_64-linux-gnu/bits/statx.h:
 
 /usr/include/x86_64-linux-gnu/bits/stdint-least.h:
 
+/usr/include/x86_64-linux-gnu/bits/strings_fortified.h:
+
 /usr/include/x86_64-linux-gnu/bits/types/struct_timespec.h:
 
 /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:
 
 /usr/include/x86_64-linux-gnu/bits/timex.h:
 
@@ -968,16 +1007,10 @@ _deps/tinygltf-src/tiny_gltf.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/FILE.h:
 
+/usr/include/x86_64-linux-gnu/bits/string_fortified.h:
+
 /usr/include/x86_64-linux-gnu/bits/struct_mutex.h:
 
 /usr/include/x86_64-linux-gnu/bits/thread-shared-types.h:
 
 /usr/include/x86_64-linux-gnu/bits/time64.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
-
-/usr/include/c++/15/bits/slice_array.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/clock_t.h:

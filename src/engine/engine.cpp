@@ -701,6 +701,66 @@ void Engine::resize(uint32_t width, uint32_t height) {
     wgpuSurfaceConfigure(surface_.surface, &cfg);
 }
 
+// =========================================================================
+// Frustum culling
+// =========================================================================
+struct Frustum6 {
+    glm::vec4 planes[6];
+};
+
+static Frustum6 extract_frustum(const glm::mat4& m) {
+    Frustum6 f;
+    glm::vec4 r0(m[0][0], m[1][0], m[2][0], m[3][0]);
+    glm::vec4 r1(m[0][1], m[1][1], m[2][1], m[3][1]);
+    glm::vec4 r2(m[0][2], m[1][2], m[2][2], m[3][2]);
+    glm::vec4 r3(m[0][3], m[1][3], m[2][3], m[3][3]);
+    f.planes[0] = r3 + r0;
+    f.planes[1] = r3 - r0;
+    f.planes[2] = r3 + r1;
+    f.planes[3] = r3 - r1;
+    f.planes[4] = r3 + r2;
+    f.planes[5] = r3 - r2;
+    for (int i = 0; i < 6; ++i) {
+        float len = glm::length(glm::vec3(f.planes[i]));
+        if (len > 1e-6f) f.planes[i] /= len;
+    }
+    return f;
+}
+
+static void transform_aabb(const glm::vec3& in_min, const glm::vec3& in_max,
+                          const glm::mat4& m,
+                          glm::vec3& out_min, glm::vec3& out_max)
+{
+    glm::vec3 c[8] = {
+        {in_min.x, in_min.y, in_min.z}, {in_max.x, in_min.y, in_min.z},
+        {in_min.x, in_max.y, in_min.z}, {in_max.x, in_max.y, in_min.z},
+        {in_min.x, in_min.y, in_max.z}, {in_max.x, in_min.y, in_max.z},
+        {in_min.x, in_max.y, in_max.z}, {in_max.x, in_max.y, in_max.z},
+    };
+    out_min = glm::vec3( 1e30f);
+    out_max = glm::vec3(-1e30f);
+    for (int i = 0; i < 8; ++i) {
+        glm::vec3 w = glm::vec3(m * glm::vec4(c[i], 1.0f));
+        out_min = glm::min(out_min, w);
+        out_max = glm::max(out_max, w);
+    }
+}
+
+static bool frustum_test_aabb(const Frustum6& f,
+                              const glm::vec3& aabb_min,
+                              const glm::vec3& aabb_max)
+{
+    for (int i = 0; i < 6; ++i) {
+        const glm::vec4& p = f.planes[i];
+        glm::vec3 pv(
+            (p.x >= 0.0f) ? aabb_max.x : aabb_min.x,
+            (p.y >= 0.0f) ? aabb_max.y : aabb_min.y,
+            (p.z >= 0.0f) ? aabb_max.z : aabb_min.z);
+        if (p.x * pv.x + p.y * pv.y + p.z * pv.z + p.w < 0.0f) return false;
+    }
+    return true;
+}
+
 static WGPURenderPipeline make_geometry_pipeline(
     WGPUDevice device, WGPUTextureFormat /*unused_color_format*/,
     WGPUBindGroupLayout uniform_bgl, WGPUBindGroupLayout material_bgl)
@@ -1208,11 +1268,11 @@ void Engine::begin_frame() {
     float scene_radius = 1.0f;
 
     if (scene_.loaded) {
-        glm::vec3 center = (scene_.aabb_min + scene_.aabb_max) * 0.5f;
-        scene_radius = glm::length(scene_.aabb_max - scene_.aabb_min) * 0.5f;
+        // Frame the car (not the ground plane) so the shot stays tight.
+        glm::vec3 center = (scene_.car_aabb_min + scene_.car_aabb_max) * 0.5f;
+        scene_radius = glm::length(scene_.car_aabb_max - scene_.car_aabb_min) * 0.5f;
         if (scene_radius < 0.01f) scene_radius = 1.0f;
 
-        // Orbit slowly around the scene for a "hero shot" that shows the car.
         float orbit = t * 0.3f;
         glm::vec3 offset_dir = glm::vec3(std::cos(orbit), 0.55f, std::sin(orbit));
         cam_pos = center + offset_dir * scene_radius * 2.2f;
@@ -1304,13 +1364,11 @@ void Engine::begin_frame() {
                 const uint32_t kStride = 256;
                 const uint32_t N = (uint32_t)scene_.objects.size();
 
-                // Build all per-object uniform data on the CPU in one buffer,
-                // then upload once before starting the render pass. The
-                // render pass binds the same uniform buffer per draw with a
-                // dynamic offset = i * kStride, so each draw sees its own
-                // slice. This is the correct WebGPU pattern; writing the
-                // buffer between draws inside a render pass doesn't work
-                // (the queue writes all land before command execution).
+                // Frustum cull: build visible list + their uniforms in one pass.
+                Frustum6 frustum = extract_frustum(mvp_proj_view);
+                std::vector<uint32_t> visible;
+                visible.reserve(N);
+
                 struct U {
                     glm::mat4 mvp;
                     glm::mat4 model;
@@ -1318,24 +1376,50 @@ void Engine::begin_frame() {
                     glm::vec4 material_params;
                     uint8_t   pad[32];
                 };
-                std::vector<uint8_t> uniform_data((size_t)N * kStride, 0);
+                std::vector<uint8_t> uniform_data;
+                uniform_data.reserve((size_t)N * kStride);
+
                 for (uint32_t i = 0; i < N; ++i) {
-                    const auto& obj = scene_.objects[i];
+                    const auto& obj  = scene_.objects[i];
+                    const auto& mesh = scene_.meshes[obj.mesh_index];
+
+                    glm::vec3 wmin, wmax;
+                    transform_aabb(mesh.aabb_min, mesh.aabb_max, obj.transform,
+                                   wmin, wmax);
+                    if (!frustum_test_aabb(frustum, wmin, wmax)) continue;
+
+                    visible.push_back(i);
+
                     const auto& mat = scene_.materials[obj.material_index];
                     U u = {};
                     u.mvp    = mvp_proj_view * obj.transform;
                     u.model  = obj.transform;
                     u.material_color  = mat.base_color;
                     u.material_params = glm::vec4(mat.roughness, mat.metallic, mat.ao, 0.0f);
-                    std::memcpy(uniform_data.data() + i * kStride, &u, sizeof(u));
-                }
-                wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0,
-                                     uniform_data.data(), uniform_data.size());
 
-                for (uint32_t i = 0; i < N; ++i) {
-                    const auto& obj = scene_.objects[i];
+                    size_t prev = uniform_data.size();
+                    uniform_data.resize(prev + kStride);
+                    std::memcpy(uniform_data.data() + prev, &u, sizeof(u));
+                }
+
+                static uint32_t last_v = 0;
+                if ((last_v / 60) != ((uint32_t)visible.size() / 60)) {
+                    std::fprintf(stderr,
+                        "[engine] frustum cull: %zu / %u visible (%.1f%%)\n",
+                        visible.size(), N,
+                        100.0f * (float)visible.size() / std::max(1u, N));
+                    last_v = (uint32_t)visible.size();
+                }
+
+                if (!uniform_data.empty()) {
+                    wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0,
+                                         uniform_data.data(), uniform_data.size());
+                }
+
+                for (uint32_t slot = 0; slot < (uint32_t)visible.size(); ++slot) {
+                    const auto& obj  = scene_.objects[visible[slot]];
                     const auto& mesh = scene_.meshes[obj.mesh_index];
-                    uint32_t offset = i * kStride;
+                    uint32_t offset  = slot * kStride;
 
                     wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 1, &offset);
                     wgpuRenderPassEncoderSetBindGroup(rp, 1,
@@ -1897,15 +1981,85 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
         }
     }
 
-    scene_.aabb_min = scene_min;
-    scene_.aabb_max = scene_max;
+    // Save the glTF content AABB for camera framing (before ground plane).
+    scene_.car_aabb_min = scene_min;
+    scene_.car_aabb_max = scene_max;
+
+    // ---- Ground plane ----
+    {
+        const float scene_size_x = scene_max.x - scene_min.x;
+        const float scene_size_z = scene_max.z - scene_min.z;
+        const float half_size = std::max(std::max(scene_size_x, scene_size_z) * 5.0f, 20.0f);
+        const float y  = scene_min.y - 0.01f;
+        const float cx = (scene_min.x + scene_max.x) * 0.5f;
+        const float cz = (scene_min.z + scene_max.z) * 0.5f;
+
+        struct V { float px,py,pz, nx,ny,nz, u,v, tx,ty,tz,tw; };
+        V verts[4] = {
+            { cx - half_size, y, cz - half_size,  0,1,0,  0,0,  1,0,0,1 },
+            { cx + half_size, y, cz - half_size,  0,1,0,  1,0,  1,0,0,1 },
+            { cx + half_size, y, cz + half_size,  0,1,0,  1,1,  1,0,0,1 },
+            { cx - half_size, y, cz + half_size,  0,1,0,  0,1,  1,0,0,1 },
+        };
+        uint32_t idx[6] = { 0, 1, 2,  0, 2, 3 };
+
+        Mesh ground;
+        {
+            WGPUBufferDescriptor vbd = {};
+            vbd.size  = sizeof(verts);
+            vbd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+            ground.vertex_buffer = wgpuDeviceCreateBuffer(gpu_.device, &vbd);
+            wgpuQueueWriteBuffer(gpu_.queue, ground.vertex_buffer, 0, verts, sizeof(verts));
+        }
+        {
+            WGPUBufferDescriptor ibd = {};
+            ibd.size  = sizeof(idx);
+            ibd.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+            ground.index_buffer = wgpuDeviceCreateBuffer(gpu_.device, &ibd);
+            wgpuQueueWriteBuffer(gpu_.queue, ground.index_buffer, 0, idx, sizeof(idx));
+        }
+        ground.vertex_count = 4;
+        ground.index_count  = 6;
+        ground.aabb_min     = glm::vec3(cx - half_size, y, cz - half_size);
+        ground.aabb_max     = glm::vec3(cx + half_size, y, cz + half_size);
+
+        Material gmat;
+        gmat.base_color = glm::vec4(0.35f, 0.35f, 0.35f, 1.0f);
+        gmat.roughness  = 0.85f;
+        gmat.metallic   = 0.0f;
+        gmat.ao         = 1.0f;
+        gmat.bind_group = scene_.materials[0].bind_group;  // reuse default bind group
+
+        uint32_t gm = (uint32_t)scene_.materials.size();
+        scene_.materials.push_back(gmat);
+
+        uint32_t gmesh = (uint32_t)scene_.meshes.size();
+        ground.material_index = (int)gm;
+        scene_.meshes.push_back(ground);
+
+        SceneObject gobj;
+        gobj.mesh_index     = gmesh;
+        gobj.material_index = gm;
+        gobj.transform      = glm::mat4(1.0f);
+        scene_.objects.push_back(gobj);
+
+        scene_.aabb_min = glm::min(scene_.aabb_min, ground.aabb_min);
+        scene_.aabb_max = glm::max(scene_.aabb_max, ground.aabb_max);
+
+        std::fprintf(stderr,
+            "[engine] ground plane added (%.1fx%.1f at y=%.2f)\n",
+            half_size * 2.0f, half_size * 2.0f, y);
+    }
+
+    scene_.aabb_min = glm::min(scene_.aabb_min, scene_min);
+    scene_.aabb_max = glm::max(scene_.aabb_max, scene_max);
     scene_.loaded   = true;
 
     std::fprintf(stderr,
         "[engine] scene: %zu objects, AABB (%.2f,%.2f,%.2f)..(%.2f,%.2f,%.2f)\n",
         scene_.objects.size(),
-        scene_min.x, scene_min.y, scene_min.z,
-        scene_max.x, scene_max.y, scene_max.z);
+        scene_.aabb_min.x, scene_.aabb_min.y, scene_.aabb_min.z,
+        scene_.aabb_max.x, scene_.aabb_max.y, scene_.aabb_max.z);
 
     return true;
 }

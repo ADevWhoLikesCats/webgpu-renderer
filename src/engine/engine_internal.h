@@ -107,8 +107,10 @@ struct Scene {
     std::vector<Mesh>        meshes;
     std::vector<Material>    materials;
     std::vector<SceneObject> objects;
-    glm::vec3                aabb_min = glm::vec3(0.0f);
+    glm::vec3                aabb_min = glm::vec3(0.0f);      // full scene (incl. ground)
     glm::vec3                aabb_max = glm::vec3(0.0f);
+    glm::vec3                car_aabb_min = glm::vec3(0.0f);  // glTF content only
+    glm::vec3                car_aabb_max = glm::vec3(0.0f);
     bool                     loaded   = false;
 
     // GpuContext-owned resources for textures. Kept here for lifetime

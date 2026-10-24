@@ -84,7 +84,12 @@ CMakeFiles/engine_demo.dir/apps/demo/main.cpp.o: /home/hrishikesh/Downloads/phot
   /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-least.h \
   /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio2-decl.h \
+  /usr/include/x86_64-linux-gnu/bits/stdio2.h \
   /usr/include/x86_64-linux-gnu/bits/stdio_lim.h \
+  /usr/include/x86_64-linux-gnu/bits/string_fortified.h \
+  /usr/include/x86_64-linux-gnu/bits/strings_fortified.h \
   /usr/include/x86_64-linux-gnu/bits/time64.h \
   /usr/include/x86_64-linux-gnu/bits/timesize.h \
   /usr/include/x86_64-linux-gnu/bits/types.h \
@@ -102,6 +107,8 @@ CMakeFiles/engine_demo.dir/apps/demo/main.cpp.o: /home/hrishikesh/Downloads/phot
   /usr/include/x86_64-linux-gnu/bits/typesizes.h \
   /usr/include/x86_64-linux-gnu/bits/uintn-identity.h \
   /usr/include/x86_64-linux-gnu/bits/wchar.h \
+  /usr/include/x86_64-linux-gnu/bits/wchar2-decl.h \
+  /usr/include/x86_64-linux-gnu/bits/wchar2.h \
   /usr/include/x86_64-linux-gnu/bits/wordsize.h \
   /usr/include/x86_64-linux-gnu/c++/15/bits/c++config.h \
   /usr/include/x86_64-linux-gnu/c++/15/bits/cpu_defines.h \
@@ -215,8 +222,6 @@ engine_demo: /home/hrishikesh/Downloads/Dawn/lib64/libwebgpu_dawn.a \
   libphotonix.a
 
 
-CMakeFiles/engine_demo.dir/apps/demo/main.cpp.o:
-
 /usr/lib/x86_64-linux-gnu/pulseaudio/libpulsecommon-17.0.so:
 
 /usr/lib/x86_64-linux-gnu/libxcb.so.1:
@@ -321,6 +326,16 @@ _deps/glm-build/glm/libglm.a:
 
 /usr/lib/i386-linux-gnu/libFLAC.so.14:
 
+/usr/lib/gcc/x86_64-linux-gnu/15/libstdc++.so:
+
+/usr/lib/i386-linux-gnu/libwayland-egl.so.1:
+
+/usr/lib/gcc/x86_64-linux-gnu/15/libgcc.a:
+
+/usr/lib/x86_64-linux-gnu/libsndfile.so.1:
+
+/usr/lib/x86_64-linux-gnu/librt.a:
+
 /usr/include/SDL3/SDL_touch.h:
 
 /usr/lib/x86_64-linux-gnu/crti.o:
@@ -333,9 +348,19 @@ _deps/glm-build/glm/libglm.a:
 
 /usr/include/SDL3/SDL_sensor.h:
 
+/usr/lib/x86_64-linux-gnu/libvorbisenc.so.2:
+
+/usr/lib/gcc/x86_64-linux-gnu/15/libgcc_s.so:
+
+/usr/include/SDL3/SDL_scancode.h:
+
 /usr/include/SDL3/SDL_process.h:
 
 /home/hrishikesh/Downloads/photonix-rewrite/apps/demo/main.cpp:
+
+/usr/lib/gcc/x86_64-linux-gnu/15/crtendS.o:
+
+/usr/include/x86_64-linux-gnu/c++/15/bits/cpu_defines.h:
 
 /usr/include/SDL3/SDL_render.h:
 
@@ -347,17 +372,11 @@ _deps/glm-build/glm/libglm.a:
 
 /usr/include/SDL3/SDL_pixels.h:
 
-/usr/include/SDL3/SDL_init.h:
-
 /usr/include/SDL3/SDL_pen.h:
 
 /usr/include/SDL3/SDL_mouse.h:
 
 /usr/include/SDL3/SDL_iostream.h:
-
-/usr/lib/i386-linux-gnu/libvorbis.so.0:
-
-/usr/include/SDL3/SDL_platform.h:
 
 /usr/lib/i386-linux-gnu/libgbm.so.1:
 
@@ -393,10 +412,6 @@ _deps/glm-build/glm/libglm.a:
 
 /usr/include/x86_64-linux-gnu/bits/wordsize.h:
 
-/usr/include/x86_64-linux-gnu/c++/15/bits/cpu_defines.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/15/crtendS.o:
-
 /usr/lib/i386-linux-gnu/libogg.so.0:
 
 /usr/lib/i386-linux-gnu/libdecor-0.so.0:
@@ -407,7 +422,7 @@ _deps/glm-build/glm/libglm.a:
 
 /usr/include/SDL3/SDL_gpu.h:
 
-/usr/lib/gcc/x86_64-linux-gnu/15/libstdc++.so:
+/usr/include/x86_64-linux-gnu/bits/wchar2.h:
 
 /usr/lib/x86_64-linux-gnu/libdecor-0.so.0:
 
@@ -483,10 +498,6 @@ _deps/glm-build/glm/libglm.a:
 
 /usr/include/x86_64-linux-gnu/bits/types/__fpos_t.h:
 
-libphotonix.a:
-
-/usr/include/SDL3/SDL_video.h:
-
 /usr/include/SDL3/SDL_oldnames.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/struct_FILE.h:
@@ -511,6 +522,8 @@ libphotonix.a:
 
 /usr/include/x86_64-linux-gnu/bits/types/__locale_t.h:
 
+/usr/include/x86_64-linux-gnu/bits/stdio.h:
+
 /usr/include/SDL3/SDL_mutex.h:
 
 /usr/include/string.h:
@@ -525,6 +538,12 @@ libphotonix.a:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/stdint.h:
 
+/usr/lib/i386-linux-gnu/libxkbcommon.so.0:
+
+/usr/lib/x86_64-linux-gnu/libwayland-client.so:
+
+/usr/include/x86_64-linux-gnu/bits/byteswap.h:
+
 /usr/lib/x86_64-linux-gnu/libxkbcommon.so.0:
 
 /usr/lib/x86_64-linux-gnu/libXrender.so.1:
@@ -532,12 +551,6 @@ libphotonix.a:
 /usr/include/x86_64-linux-gnu/bits/long-double.h:
 
 /usr/include/x86_64-linux-gnu/bits/endianness.h:
-
-/usr/lib/x86_64-linux-gnu/libvorbisenc.so.2:
-
-/usr/include/SDL3/SDL_scancode.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/15/libgcc_s.so:
 
 /usr/include/c++/15/cstdio:
 
@@ -553,15 +566,35 @@ libphotonix.a:
 
 /usr/include/x86_64-linux-gnu/c++/15/bits/c++config.h:
 
+/usr/include/SDL3/SDL_power.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdint-uintn.h:
+
+libphotonix.a:
+
+/usr/include/SDL3/SDL_video.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdio2-decl.h:
+
+/usr/include/SDL3/SDL_init.h:
+
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/15/include/stdarg.h:
+
+CMakeFiles/engine_demo.dir/apps/demo/main.cpp.o:
+
+/usr/include/x86_64-linux-gnu/bits/string_fortified.h:
+
+/lib64/ld-linux-x86-64.so.2:
+
 /usr/include/SDL3/SDL_storage.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/mbstate_t.h:
 
 /usr/include/x86_64-linux-gnu/bits/stdint-least.h:
 
-/usr/include/SDL3/SDL_power.h:
-
-/usr/include/x86_64-linux-gnu/bits/stdint-uintn.h:
+/usr/include/x86_64-linux-gnu/bits/strings_fortified.h:
 
 /usr/include/SDL3/SDL_haptic.h:
 
@@ -581,12 +614,6 @@ libphotonix.a:
 
 /usr/include/x86_64-linux-gnu/bits/types/__fpos64_t.h:
 
-/lib64/ld-linux-x86-64.so.2:
-
-/usr/lib/x86_64-linux-gnu/libsndfile.so.1:
-
-/usr/lib/x86_64-linux-gnu/librt.a:
-
 /usr/include/x86_64-linux-gnu/bits/types/locale_t.h:
 
 /usr/lib/x86_64-linux-gnu/libc.so:
@@ -601,6 +628,14 @@ libphotonix.a:
 
 /usr/include/x86_64-linux-gnu/bits/wchar.h:
 
+/usr/lib/i386-linux-gnu/libvorbis.so.0:
+
+/usr/include/SDL3/SDL_platform.h:
+
+/usr/include/x86_64-linux-gnu/bits/wchar2-decl.h:
+
+/usr/include/x86_64-linux-gnu/sys/cdefs.h:
+
 /usr/include/SDL3/SDL_misc.h:
 
 /usr/include/x86_64-linux-gnu/gnu/stubs-64.h:
@@ -608,10 +643,6 @@ libphotonix.a:
 /usr/include/x86_64-linux-gnu/bits/endian.h:
 
 /usr/include/x86_64-linux-gnu/gnu/stubs.h:
-
-/usr/include/x86_64-linux-gnu/sys/cdefs.h:
-
-/usr/lib/gcc/x86_64-linux-gnu/15/include/stdarg.h:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/stddef.h:
 
@@ -626,13 +657,3 @@ libphotonix.a:
 /usr/include/SDL3/SDL_stdinc.h:
 
 /usr/lib/x86_64-linux-gnu/libdl.a:
-
-/usr/lib/i386-linux-gnu/libxkbcommon.so.0:
-
-/usr/include/x86_64-linux-gnu/bits/byteswap.h:
-
-/usr/lib/x86_64-linux-gnu/libwayland-client.so:
-
-/usr/lib/i386-linux-gnu/libwayland-egl.so.1:
-
-/usr/lib/gcc/x86_64-linux-gnu/15/libgcc.a:

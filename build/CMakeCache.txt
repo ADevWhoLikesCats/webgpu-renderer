@@ -55,7 +55,7 @@ CMAKE_AR:FILEPATH=/usr/bin/ar
 
 //Choose the type of build, options are: None Debug Release RelWithDebInfo
 // MinSizeRel ...
-CMAKE_BUILD_TYPE:STRING=Debug
+CMAKE_BUILD_TYPE:STRING=Release
 
 //Enable/Disable color output during build.
 CMAKE_COLOR_MAKEFILE:BOOL=ON
@@ -415,12 +415,6 @@ PKG_CONFIG_EXECUTABLE:FILEPATH=/usr/bin/pkg-config
 
 //The directory containing a CMake configuration file for SDL3.
 SDL3_DIR:PATH=/usr/lib/x86_64-linux-gnu/cmake/SDL3
-
-//Build and run tinygltf v3 C unit tests
-TINYGLTF3_BUILD_TESTS:BOOL=ON
-
-//Install tinygltf v3 files during install step
-TINYGLTF3_INSTALL:BOOL=ON
 
 //Build glTF builder example
 TINYGLTF_BUILD_BUILDER_EXAMPLE:BOOL=OFF
@@ -923,15 +917,6 @@ tinygltf_IS_TOP_LEVEL:STATIC=OFF
 
 //Value Computed by CMake
 tinygltf_SOURCE_DIR:STATIC=/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src
-
-//Value Computed by CMake
-tinygltf_v3_BINARY_DIR:STATIC=/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-build
-
-//Value Computed by CMake
-tinygltf_v3_IS_TOP_LEVEL:STATIC=OFF
-
-//Value Computed by CMake
-tinygltf_v3_SOURCE_DIR:STATIC=/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-src
 
 
 ########################
