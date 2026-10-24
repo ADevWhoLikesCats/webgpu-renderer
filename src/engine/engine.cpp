@@ -27,6 +27,13 @@ void Engine::shutdown() {
     triangle_pipeline_ready_ = false;
     if (offscreen_view_)  { wgpuTextureViewRelease(offscreen_view_);  offscreen_view_  = nullptr; }
     if (offscreen_color_) { wgpuTextureRelease(offscreen_color_);     offscreen_color_ = nullptr; }
+    if (gpu_.depth_view)     { wgpuTextureViewRelease(gpu_.depth_view);     gpu_.depth_view     = nullptr; }
+    if (gpu_.depth_texture)  { wgpuTextureRelease(gpu_.depth_texture);      gpu_.depth_texture  = nullptr; }
+    if (gpu_.uniform_bind_group) { wgpuBindGroupRelease(gpu_.uniform_bind_group); gpu_.uniform_bind_group = nullptr; }
+    if (gpu_.uniform_bgl)        { wgpuBindGroupLayoutRelease(gpu_.uniform_bgl);  gpu_.uniform_bgl        = nullptr; }
+    if (gpu_.uniform_buffer)     { wgpuBufferRelease(gpu_.uniform_buffer);        gpu_.uniform_buffer     = nullptr; }
+    if (gpu_.vertex_buffer)      { wgpuBufferRelease(gpu_.vertex_buffer);         gpu_.vertex_buffer      = nullptr; }
+    if (gpu_.index_buffer)       { wgpuBufferRelease(gpu_.index_buffer);          gpu_.index_buffer       = nullptr; }
     if (!initialized_) return;
     if (surface_.surface) { wgpuSurfaceRelease(surface_.surface); surface_.surface = nullptr; }
     gpu_.destroy();
@@ -190,6 +197,143 @@ bool Engine::init(const char* app_name,
                      offscreen_width_, offscreen_height_, (int)offscreen_format_);
     }
 
+    // ---- Depth texture ----
+    {
+        WGPUTextureDescriptor td = {};
+        td.dimension     = WGPUTextureDimension_2D;
+        td.size          = { width, height, 1 };
+        td.format        = WGPUTextureFormat_Depth32Float;
+        td.mipLevelCount = 1;
+        td.sampleCount   = 1;
+        td.usage         = WGPUTextureUsage_RenderAttachment;
+        gpu_.depth_texture = wgpuDeviceCreateTexture(gpu_.device, &td);
+        if (!gpu_.depth_texture) {
+            err = "depth texture creation failed";
+            shutdown();
+            return false;
+        }
+        gpu_.depth_view = wgpuTextureCreateView(gpu_.depth_texture, nullptr);
+        if (!gpu_.depth_view) {
+            err = "depth view creation failed";
+            shutdown();
+            return false;
+        }
+        std::fprintf(stderr, "[engine] depth target created (%ux%u Depth32Float)\n",
+                     width, height);
+    }
+
+    // ---- Uniform buffer (two mat4 = 128 bytes) ----
+    {
+        WGPUBufferDescriptor bd = {};
+        bd.size  = 128;
+        bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        gpu_.uniform_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        if (!gpu_.uniform_buffer) {
+            err = "uniform buffer creation failed";
+            shutdown();
+            return false;
+        }
+    }
+
+    // ---- Bind group layout + bind group for the uniform buffer ----
+    {
+        WGPUBindGroupLayoutEntry entry = {};
+        entry.binding    = 0;
+        entry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        entry.buffer.type            = WGPUBufferBindingType_Uniform;
+        entry.buffer.hasDynamicOffset = false;
+        entry.buffer.minBindingSize   = 128;
+
+        WGPUBindGroupLayoutDescriptor bgl_desc = {};
+        bgl_desc.entryCount = 1;
+        bgl_desc.entries    = &entry;
+        gpu_.uniform_bgl = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl_desc);
+        if (!gpu_.uniform_bgl) {
+            err = "bind group layout creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupEntry bg_entry = {};
+        bg_entry.binding = 0;
+        bg_entry.buffer  = gpu_.uniform_buffer;
+        bg_entry.offset  = 0;
+        bg_entry.size    = 128;
+
+        WGPUBindGroupDescriptor bg_desc = {};
+        bg_desc.layout     = gpu_.uniform_bgl;
+        bg_desc.entryCount = 1;
+        bg_desc.entries    = &bg_entry;
+        gpu_.uniform_bind_group = wgpuDeviceCreateBindGroup(gpu_.device, &bg_desc);
+        if (!gpu_.uniform_bind_group) {
+            err = "bind group creation failed";
+            shutdown();
+            return false;
+        }
+        std::fprintf(stderr, "[engine] uniform buffer + bind group ready\n");
+    }
+
+    // ---- Cube geometry ----
+    // Vertex layout: pos(vec3) + normal(vec3) + uv(vec2) = 32 bytes.
+    // 24 verts (4 per face so normal/uv can be per-face), 36 indices (u16).
+    {
+        struct V { float px,py,pz, nx,ny,nz, u,v; };
+        // Half-extent 0.5, centered at origin.
+        static const V verts[24] = {
+            // +X face
+            { 0.5f,-0.5f,-0.5f,  1,0,0,  0,1 }, { 0.5f,-0.5f, 0.5f,  1,0,0,  1,1 },
+            { 0.5f, 0.5f, 0.5f,  1,0,0,  1,0 }, { 0.5f, 0.5f,-0.5f,  1,0,0,  0,0 },
+            // -X face
+            {-0.5f,-0.5f, 0.5f, -1,0,0,  0,1 }, {-0.5f,-0.5f,-0.5f, -1,0,0,  1,1 },
+            {-0.5f, 0.5f,-0.5f, -1,0,0,  1,0 }, {-0.5f, 0.5f, 0.5f, -1,0,0,  0,0 },
+            // +Y face
+            {-0.5f, 0.5f,-0.5f,  0,1,0,  0,1 }, { 0.5f, 0.5f,-0.5f,  0,1,0,  1,1 },
+            { 0.5f, 0.5f, 0.5f,  0,1,0,  1,0 }, {-0.5f, 0.5f, 0.5f,  0,1,0,  0,0 },
+            // -Y face
+            {-0.5f,-0.5f, 0.5f,  0,-1,0, 0,1 }, { 0.5f,-0.5f, 0.5f,  0,-1,0, 1,1 },
+            { 0.5f,-0.5f,-0.5f,  0,-1,0, 1,0 }, {-0.5f,-0.5f,-0.5f,  0,-1,0, 0,0 },
+            // +Z face
+            {-0.5f,-0.5f, 0.5f,  0,0,1,  0,1 }, { 0.5f,-0.5f, 0.5f,  0,0,1,  1,1 },
+            { 0.5f, 0.5f, 0.5f,  0,0,1,  1,0 }, {-0.5f, 0.5f, 0.5f,  0,0,1,  0,0 },
+            // -Z face
+            { 0.5f,-0.5f,-0.5f,  0,0,-1, 0,1 }, {-0.5f,-0.5f,-0.5f,  0,0,-1, 1,1 },
+            {-0.5f, 0.5f,-0.5f,  0,0,-1, 1,0 }, { 0.5f, 0.5f,-0.5f,  0,0,-1, 0,0 },
+        };
+        static const uint16_t idx[36] = {
+             0, 1, 2,  0, 2, 3,   4, 5, 6,  4, 6, 7,
+             8, 9,10,  8,10,11,  12,13,14, 12,14,15,
+            16,17,18, 16,18,19,  20,21,22, 20,22,23,
+        };
+
+        WGPUBufferDescriptor vbd = {};
+        vbd.size  = sizeof(verts);
+        vbd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        gpu_.vertex_buffer = wgpuDeviceCreateBuffer(gpu_.device, &vbd);
+        if (!gpu_.vertex_buffer) {
+            err = "vertex buffer creation failed";
+            shutdown();
+            return false;
+        }
+        wgpuQueueWriteBuffer(gpu_.queue, gpu_.vertex_buffer, 0, verts, sizeof(verts));
+        gpu_.vertex_count = 24;
+
+        WGPUBufferDescriptor ibd = {};
+        ibd.size  = sizeof(idx);
+        ibd.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+        gpu_.index_buffer = wgpuDeviceCreateBuffer(gpu_.device, &ibd);
+        if (!gpu_.index_buffer) {
+            err = "index buffer creation failed";
+            shutdown();
+            return false;
+        }
+        wgpuQueueWriteBuffer(gpu_.queue, gpu_.index_buffer, 0, idx, sizeof(idx));
+        gpu_.index_count = 36;
+
+        std::fprintf(stderr,
+            "[engine] cube geometry uploaded: %u verts, %u indices\n",
+            gpu_.vertex_count, gpu_.index_count);
+    }
+
     // ---- Surface (Wayland only for now) ----
 #if defined(__linux__)
     if (wayland_surface && wayland_display) {
@@ -231,7 +375,7 @@ bool Engine::init(const char* app_name,
     WGPUSurfaceConfiguration cfg = {};
     cfg.device      = gpu_.device;
     cfg.format      = surface_.format;
-    cfg.usage       = WGPUTextureUsage_RenderAttachment;
+    cfg.usage       = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopyDst;
     cfg.width       = width;
     cfg.height      = height;
     cfg.presentMode = WGPUPresentMode_Fifo;
@@ -254,7 +398,7 @@ void Engine::resize(uint32_t width, uint32_t height) {
     WGPUSurfaceConfiguration cfg = {};
     cfg.device      = gpu_.device;
     cfg.format      = surface_.format;
-    cfg.usage       = WGPUTextureUsage_RenderAttachment;
+    cfg.usage       = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopyDst;
     cfg.width       = width;
     cfg.height      = height;
     cfg.presentMode = WGPUPresentMode_Fifo;
@@ -379,7 +523,8 @@ void Engine::begin_frame() {
     wgpuRenderPassEncoderRelease(rp);
     wgpuCommandEncoderRelease(enc);
 
-    if ((frame_index_++ % 60) == 0) {
+    frame_index_++;
+    if (std::getenv("PHX_DUMP_PPM") && (frame_index_ % 60) == 0) {
         const uint32_t w = offscreen_width_;
         const uint32_t h = offscreen_height_;
         const uint32_t bytes_per_row = w * 4;
@@ -452,6 +597,45 @@ void Engine::begin_frame() {
             std::fprintf(stderr, "[engine] map failed\n");
         }
         wgpuBufferRelease(buf);
+    }
+
+
+    // ---- Present offscreen -> swapchain -> compositor ----
+    // If this path works, we have a live window. If the window is black
+    // while the PPM dump shows the same frame correctly, we've confirmed
+    // the Mesa Wayland WSI present bug (present returns Success, compositor
+    // never sees the frame).
+    if (surface_.surface) {
+        WGPUSurfaceTexture stex = {};
+        wgpuSurfaceGetCurrentTexture(surface_.surface, &stex);
+        if (stex.texture) {
+            WGPUCommandEncoder pe = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
+            WGPUTexelCopyTextureInfo src = {};
+            src.texture  = offscreen_color_;
+            src.mipLevel = 0;
+            src.origin   = {0, 0, 0};
+            WGPUTexelCopyTextureInfo dst = {};
+            dst.texture  = stex.texture;
+            dst.mipLevel = 0;
+            dst.origin   = {0, 0, 0};
+            WGPUExtent3D pextent = {offscreen_width_, offscreen_height_, 1};
+            wgpuCommandEncoderCopyTextureToTexture(pe, &src, &dst, &pextent);
+            WGPUCommandBuffer pc = wgpuCommandEncoderFinish(pe, nullptr);
+            wgpuQueueSubmit(gpu_.queue, 1, &pc);
+            wgpuCommandBufferRelease(pc);
+            wgpuCommandEncoderRelease(pe);
+            WGPUStatus status = wgpuSurfacePresent(surface_.surface);
+            static int present_ok = 0;
+            if (present_ok < 5) {
+                std::fprintf(stderr, "[engine] present frame %d status=%d\n",
+                             present_ok, (int)status);
+                present_ok++;
+            }
+            wgpuTextureRelease(stex.texture);
+        } else {
+            std::fprintf(stderr, "[engine] getCurrentTexture returned null (status=%d)\n",
+                         (int)stex.status);
+        }
     }
 }
 

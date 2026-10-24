@@ -28,6 +28,22 @@ struct GpuContext {
     WGPUDevice   device   = nullptr;
     WGPUQueue    queue    = nullptr;
 
+    // Depth target (attached to every offscreen render pass).
+    WGPUTexture     depth_texture = nullptr;
+    WGPUTextureView depth_view    = nullptr;
+
+    // Per-frame uniforms (MVP + model matrix).
+    WGPUBuffer        uniform_buffer    = nullptr;
+    WGPUBindGroupLayout uniform_bgl     = nullptr;
+    WGPUBindGroup     uniform_bind_group = nullptr;
+
+    // Geometry.
+    WGPUBuffer vertex_buffer = nullptr;
+    uint32_t   vertex_count  = 0;
+    uint32_t   vertex_stride = 32;  // pos(12) + normal(12) + uv(8)
+    WGPUBuffer index_buffer  = nullptr;
+    uint32_t   index_count   = 0;
+
     void destroy();
 };
 
@@ -83,6 +99,10 @@ private:
     // Minimal triangle pipeline (checkpoint: first pixel).
     WGPURenderPipeline triangle_pipeline_ = nullptr;
     bool               triangle_pipeline_ready_ = false;
+
+    // Cube pipeline (depth-tested, uniform-driven).
+    WGPURenderPipeline cube_pipeline_ = nullptr;
+    bool               cube_pipeline_ready_ = false;
 
     // Offscreen render target (Path B: no swapchain in the loop).
     WGPUTexture offscreen_color_  = nullptr;
