@@ -1,3 +1,0 @@
-/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/CMakeFiles/tinygltf-populate.dir
-/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/CMakeFiles/edit_cache.dir
-/home/hrishikesh/Downloads/photonix-rewrite/build/_deps/tinygltf-subbuild/CMakeFiles/rebuild_cache.dir
