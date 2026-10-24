@@ -32,6 +32,17 @@ struct GpuContext {
     WGPUTexture     depth_texture = nullptr;
     WGPUTextureView depth_view    = nullptr;
 
+    // G-buffer (deferred geometry pass writes here, composite pass reads).
+    WGPUTexture     gbuf_albedo_tex   = nullptr;
+    WGPUTextureView gbuf_albedo_view  = nullptr;
+    WGPUTexture     gbuf_normal_tex   = nullptr;
+    WGPUTextureView gbuf_normal_view  = nullptr;
+    WGPUTexture     gbuf_material_tex = nullptr;
+    WGPUTextureView gbuf_material_view= nullptr;
+
+    // Sampler for the composite pass to sample G-buffer textures.
+    WGPUSampler gbuf_sampler = nullptr;
+
     // Per-frame uniforms (MVP + model matrix).
     WGPUBuffer        uniform_buffer    = nullptr;
     WGPUBindGroupLayout uniform_bgl     = nullptr;
@@ -100,9 +111,15 @@ private:
     WGPURenderPipeline triangle_pipeline_ = nullptr;
     bool               triangle_pipeline_ready_ = false;
 
-    // Cube pipeline (depth-tested, uniform-driven).
-    WGPURenderPipeline cube_pipeline_ = nullptr;
-    bool               cube_pipeline_ready_ = false;
+    // Geometry pipeline (writes G-buffer).
+    WGPURenderPipeline geometry_pipeline_ = nullptr;
+    bool               geometry_pipeline_ready_ = false;
+
+    // Composite pipeline (reads G-buffer, writes final color).
+    WGPURenderPipeline  composite_pipeline_ = nullptr;
+    bool                composite_pipeline_ready_ = false;
+    WGPUBindGroupLayout composite_bgl_ = nullptr;
+    WGPUBindGroup       composite_bg_  = nullptr;
 
     // Offscreen render target (Path B: no swapchain in the loop).
     WGPUTexture offscreen_color_  = nullptr;

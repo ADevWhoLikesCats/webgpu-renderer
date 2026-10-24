@@ -571,6 +571,19 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/type_half.inl
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/fwd.hpp
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/glm.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/detail/setup.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/scalar_constants.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/scalar_constants.inl
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/constants.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/constants.inl
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/matrix_clip_space.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/matrix_clip_space.inl
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/matrix_projection.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/matrix_projection.inl
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/matrix_transform.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/ext/matrix_transform.inl
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/matrix_transform.hpp
+ /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/gtc/matrix_transform.inl
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/integer.hpp
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/mat2x2.hpp
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/packing.hpp
@@ -580,6 +593,66 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o
  /home/hrishikesh/Downloads/photonix-rewrite/build/_deps/glm-src/glm/vec4.hpp
  /home/hrishikesh/Downloads/photonix-rewrite/include/engine/engine.h
  /home/hrishikesh/Downloads/photonix-rewrite/src/engine/engine_internal.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_assert.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_asyncio.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_atomic.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_audio.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_begin_code.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_bits.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_blendmode.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_camera.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_clipboard.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_close_code.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_cpuinfo.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_dialog.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_dlopennote.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_endian.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_error.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_events.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_filesystem.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_gamepad.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_gpu.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_guid.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_haptic.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_hidapi.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_hints.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_init.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_iostream.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_joystick.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_keyboard.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_keycode.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_loadso.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_locale.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_log.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_messagebox.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_metal.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_misc.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_mouse.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_mutex.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_oldnames.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_pen.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_pixels.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_platform.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_platform_defines.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_power.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_process.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_properties.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_rect.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_render.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_scancode.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_sensor.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_stdinc.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_storage.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_surface.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_system.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_thread.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_time.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_timer.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_touch.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_tray.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_version.h
+ /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_video.h
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/dawn/dawn_version.h
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/dawn/webgpu.h
  /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/webgpu/webgpu.h

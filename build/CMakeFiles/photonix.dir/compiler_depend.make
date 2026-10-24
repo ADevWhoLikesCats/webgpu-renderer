@@ -569,6 +569,19 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o: /home/hrishikesh/Downloads/phot
   _deps/glm-src/glm/detail/type_half.inl \
   _deps/glm-src/glm/fwd.hpp \
   _deps/glm-src/glm/glm.hpp \
+  _deps/glm-src/glm/detail/setup.hpp \
+  _deps/glm-src/glm/ext/scalar_constants.hpp \
+  _deps/glm-src/glm/ext/scalar_constants.inl \
+  _deps/glm-src/glm/gtc/constants.hpp \
+  _deps/glm-src/glm/gtc/constants.inl \
+  _deps/glm-src/glm/ext/matrix_clip_space.hpp \
+  _deps/glm-src/glm/ext/matrix_clip_space.inl \
+  _deps/glm-src/glm/ext/matrix_projection.hpp \
+  _deps/glm-src/glm/ext/matrix_projection.inl \
+  _deps/glm-src/glm/ext/matrix_transform.hpp \
+  _deps/glm-src/glm/ext/matrix_transform.inl \
+  _deps/glm-src/glm/gtc/matrix_transform.hpp \
+  _deps/glm-src/glm/gtc/matrix_transform.inl \
   _deps/glm-src/glm/integer.hpp \
   _deps/glm-src/glm/mat2x2.hpp \
   _deps/glm-src/glm/packing.hpp \
@@ -578,6 +591,66 @@ CMakeFiles/photonix.dir/src/engine/engine.cpp.o: /home/hrishikesh/Downloads/phot
   _deps/glm-src/glm/vec4.hpp \
   /home/hrishikesh/Downloads/photonix-rewrite/include/engine/engine.h \
   /home/hrishikesh/Downloads/photonix-rewrite/src/engine/engine_internal.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_assert.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_asyncio.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_atomic.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_audio.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_begin_code.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_bits.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_blendmode.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_camera.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_clipboard.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_close_code.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_cpuinfo.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_dialog.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_dlopennote.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_endian.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_error.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_events.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_filesystem.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_gamepad.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_gpu.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_guid.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_haptic.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_hidapi.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_hints.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_init.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_iostream.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_joystick.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_keyboard.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_keycode.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_loadso.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_locale.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_log.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_messagebox.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_metal.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_misc.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_mouse.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_mutex.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_oldnames.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_pen.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_pixels.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_platform.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_platform_defines.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_power.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_process.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_properties.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_rect.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_render.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_scancode.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_sensor.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_stdinc.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_storage.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_surface.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_system.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_thread.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_time.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_timer.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_touch.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_tray.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_version.h \
+  /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_video.h \
   /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/dawn/dawn_version.h \
   /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/dawn/webgpu.h \
   /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/webgpu/webgpu.h \
@@ -1042,11 +1115,21 @@ CMakeFiles/photonix.dir/src/sdl3webgpu.c.o: /home/hrishikesh/Downloads/photonix-
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/stdbool.h:
 
-/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_video.h:
+/home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.h:
 
-/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_version.h:
+/home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c:
 
-/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_tray.h:
+/usr/include/x86_64-linux-gnu/c++/15/bits/messages_members.h:
+
+/usr/include/wayland-version.h:
+
+/usr/include/wayland-client.h:
+
+/usr/include/wayland-client-core.h:
+
+/usr/include/strings.h:
+
+/usr/include/semaphore.h:
 
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_mutex.h:
 
@@ -1055,8 +1138,6 @@ CMakeFiles/photonix.dir/src/sdl3webgpu.c.o: /home/hrishikesh/Downloads/photonix-
 /usr/include/c++/15/bits/exception_ptr.h:
 
 /usr/include/c++/15/cmath:
-
-/usr/include/semaphore.h:
 
 _deps/glm-src/glm/mat2x3.hpp:
 
@@ -1089,8 +1170,6 @@ _deps/glm-src/glm/exponential.hpp:
 _deps/glm-src/glm/mat4x3.hpp:
 
 /usr/include/c++/15/bits/stl_iterator_base_funcs.h:
-
-/usr/include/c++/15/bits/specfun.h:
 
 /usr/include/c++/15/bits/ranges_cmp.h:
 
@@ -1178,10 +1257,6 @@ _deps/glm-src/glm/ext/matrix_float2x2.hpp:
 
 /usr/include/c++/15/bits/istream.tcc:
 
-/usr/include/c++/15/bits/ostream.h:
-
-/usr/include/c++/15/bits/stl_raw_storage_iter.h:
-
 /usr/include/c++/15/bits/nested_exception.h:
 
 /usr/include/c++/15/bits/memoryfwd.h:
@@ -1268,8 +1343,6 @@ _deps/glm-src/glm/ext/matrix_float2x3.hpp:
 
 /usr/include/x86_64-linux-gnu/bits/confname.h:
 
-/usr/include/wayland-client-core.h:
-
 _deps/glm-src/glm/vec2.hpp:
 
 _deps/glm-src/glm/ext/matrix_double4x3.hpp:
@@ -1300,8 +1373,6 @@ _deps/glm-src/glm/ext/matrix_double2x3_precision.hpp:
 
 /usr/include/x86_64-linux-gnu/bits/types/struct_timespec.h:
 
-/usr/include/wayland-client.h:
-
 _deps/glm-src/glm/detail/type_mat3x3.inl:
 
 /usr/include/c++/15/ext/alloc_traits.h:
@@ -1327,8 +1398,6 @@ _deps/glm-src/glm/ext/matrix_double2x3.hpp:
 _deps/glm-src/glm/ext/matrix_float4x4_precision.hpp:
 
 /usr/include/x86_64-linux-gnu/c++/15/bits/gthr.h:
-
-/usr/include/c++/15/bits/locale_classes.tcc:
 
 /usr/include/c++/15/bits/hash_bytes.h:
 
@@ -1379,6 +1448,10 @@ _deps/glm-src/glm/detail/type_mat2x2.inl:
 /usr/include/x86_64-linux-gnu/asm/unistd_64.h:
 
 /usr/include/c++/15/bits/ios_base.h:
+
+/usr/include/wayland-util.h:
+
+_deps/glm-src/glm/ext/matrix_double3x4.hpp:
 
 /usr/include/c++/15/bits/align.h:
 
@@ -1468,13 +1541,15 @@ _deps/glm-src/glm/common.hpp:
 
 _deps/glm-src/glm/ext/matrix_float3x3_precision.hpp:
 
-_deps/glm-src/glm/ext/matrix_double3x4.hpp:
-
-/usr/include/wayland-util.h:
-
 _deps/glm-src/glm/detail/type_mat2x4.hpp:
 
 /usr/include/c++/15/cwchar:
+
+/usr/include/x86_64-linux-gnu/sys/time.h:
+
+/usr/include/c++/15/bits/memory_resource.h:
+
+/usr/include/c++/15/bits/stl_function.h:
 
 /usr/include/c++/15/bits/this_thread_sleep.h:
 
@@ -1532,13 +1607,15 @@ _deps/glm-src/glm/ext/vector_int4_sized.hpp:
 
 /usr/include/x86_64-linux-gnu/c++/15/bits/c++locale.h:
 
+_deps/glm-src/glm/ext/matrix_clip_space.inl:
+
 _deps/glm-src/glm/ext/vector_int3.hpp:
+
+/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_guid.h:
 
 _deps/glm-src/glm/detail/func_exponential.inl:
 
 /usr/include/c++/15/cstring:
-
-/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_guid.h:
 
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/dawn/include/dawn/dawn_version.h:
 
@@ -1553,6 +1630,12 @@ _deps/glm-src/glm/detail/type_mat4x3.hpp:
 _deps/glm-src/glm/ext/vector_double3_precision.hpp:
 
 _deps/glm-src/glm/detail/type_mat2x2.hpp:
+
+/usr/include/string.h:
+
+_deps/glm-src/glm/detail/type_mat2x3.inl:
+
+_deps/glm-src/glm/detail/type_vec2.hpp:
 
 _deps/glm-src/glm/ext/vector_double2_precision.hpp:
 
@@ -1628,6 +1711,10 @@ _deps/glm-src/glm/ext/matrix_double2x4_precision.hpp:
 
 _deps/glm-src/glm/ext/vector_float2.hpp:
 
+/usr/include/c++/15/bits/specfun.h:
+
+_deps/glm-src/glm/gtc/matrix_transform.hpp:
+
 _deps/glm-src/glm/vec4.hpp:
 
 _deps/glm-src/glm/ext/vector_uint3_sized.hpp:
@@ -1638,17 +1725,17 @@ _deps/glm-src/glm/ext/vector_bool3_precision.hpp:
 
 /usr/include/c++/15/clocale:
 
+_deps/glm-src/glm/ext/matrix_transform.hpp:
+
 /usr/include/c++/15/initializer_list:
 
 /usr/include/c++/15/bits/exception.h:
 
-/usr/include/c++/15/bits/basic_string.h:
-
 /usr/include/wayland-client-protocol.h:
 
-/usr/include/c++/15/ostream:
+/usr/include/c++/15/bits/basic_string.h:
 
-/usr/include/strings.h:
+/usr/include/c++/15/ostream:
 
 _deps/glm-src/glm/ext/matrix_double3x3.hpp:
 
@@ -1677,8 +1764,6 @@ _deps/glm-src/glm/ext/vector_uint3.hpp:
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_oldnames.h:
 
 /usr/include/x86_64-linux-gnu/c++/15/bits/gthr-default.h:
-
-/usr/include/wayland-version.h:
 
 /usr/include/c++/15/memory:
 
@@ -1854,6 +1939,8 @@ _deps/glm-src/glm/mat3x3.hpp:
 
 /usr/include/x86_64-linux-gnu/bits/posix1_lim.h:
 
+_deps/glm-src/glm/ext/scalar_constants.hpp:
+
 /usr/include/x86_64-linux-gnu/bits/posix2_lim.h:
 
 /usr/include/x86_64-linux-gnu/bits/pthread_stack_min-dynamic.h:
@@ -1866,9 +1953,13 @@ _deps/glm-src/glm/mat3x3.hpp:
 
 /usr/include/x86_64-linux-gnu/bits/sched.h:
 
+/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_video.h:
+
 /usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
 
 /usr/include/x86_64-linux-gnu/bits/stdint-least.h:
+
+/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_version.h:
 
 /usr/include/x86_64-linux-gnu/bits/stdio_lim.h:
 
@@ -1887,6 +1978,8 @@ _deps/glm-src/glm/mat3x3.hpp:
 /usr/include/math.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/__mbstate_t.h:
+
+_deps/glm-src/glm/gtc/constants.hpp:
 
 /usr/include/x86_64-linux-gnu/bits/types/clock_t.h:
 
@@ -1920,13 +2013,17 @@ _deps/glm-src/glm/mat3x3.hpp:
 
 /usr/include/x86_64-linux-gnu/bits/types/wint_t.h:
 
-/home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.c:
-
 /usr/include/x86_64-linux-gnu/bits/waitflags.h:
 
 /usr/include/x86_64-linux-gnu/bits/waitstatus.h:
 
 /usr/include/x86_64-linux-gnu/bits/wchar.h:
+
+/usr/include/c++/15/bits/ostream.h:
+
+/usr/include/c++/15/bits/stl_raw_storage_iter.h:
+
+_deps/glm-src/glm/ext/matrix_projection.inl:
 
 /usr/include/x86_64-linux-gnu/bits/wctype-wchar.h:
 
@@ -1978,89 +2075,29 @@ _deps/glm-src/glm/detail/type_half.hpp:
 
 /usr/lib/gcc/x86_64-linux-gnu/15/include/syslimits.h:
 
-/usr/include/x86_64-linux-gnu/bits/struct_rwlock.h:
+_deps/glm-src/glm/ext/scalar_constants.inl:
 
-/usr/include/x86_64-linux-gnu/bits/semaphore.h:
+/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_system.h:
 
-/usr/include/c++/15/bits/algorithmfwd.h:
+_deps/glm-src/glm/gtc/constants.inl:
 
-/usr/include/c++/15/bits/atomic_timed_wait.h:
-
-_deps/glm-src/glm/ext/scalar_uint_sized.hpp:
-
-/usr/include/c++/15/bits/uses_allocator_args.h:
-
-/usr/include/c++/15/bits/chrono.h:
-
-/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_messagebox.h:
-
-/usr/include/c++/15/iosfwd:
-
-/usr/include/c++/15/bits/chrono_io.h:
-
-_deps/glm-src/glm/ext/matrix_float3x2.hpp:
-
-/usr/include/c++/15/bits/enable_special_members.h:
-
-/usr/include/c++/15/bits/formatfwd.h:
-
-/usr/include/c++/15/bits/locale_conv.h:
-
-/usr/include/c++/15/bits/ostream.tcc:
-
-/usr/include/c++/15/bits/parse_numbers.h:
-
-/usr/include/c++/15/bits/quoted_string.h:
-
-/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_sensor.h:
-
-/usr/include/c++/15/bits/sstream.tcc:
-
-/usr/include/c++/15/bits/stl_algo.h:
-
-/usr/include/x86_64-linux-gnu/bits/unistd_ext.h:
-
-/usr/include/c++/15/bits/uniform_int_dist.h:
+_deps/glm-src/glm/ext/matrix_clip_space.hpp:
 
 /usr/include/c++/15/math.h:
 
 /usr/include/c++/15/chrono:
 
-/usr/include/c++/15/ctime:
+_deps/glm-src/glm/ext/matrix_projection.hpp:
 
-/usr/include/c++/15/streambuf:
+/usr/include/c++/15/bits/locale_classes.tcc:
 
-/usr/include/c++/15/format:
+_deps/glm-src/glm/ext/matrix_transform.inl:
 
-/usr/include/c++/15/istream:
+_deps/glm-src/glm/gtc/matrix_transform.inl:
 
-/usr/include/c++/15/locale:
+/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_sensor.h:
 
-/usr/include/c++/15/stop_token:
-
-/usr/include/inttypes.h:
-
-/usr/include/x86_64-linux-gnu/bits/thread-shared-types.h:
-
-/usr/include/c++/15/thread:
-
-/usr/include/libintl.h:
-
-_deps/glm-src/glm/detail/type_mat2x3.inl:
-
-_deps/glm-src/glm/detail/type_vec2.hpp:
-
-/usr/include/string.h:
-
-/usr/include/x86_64-linux-gnu/c++/15/bits/messages_members.h:
-
-/usr/include/c++/15/bits/memory_resource.h:
-
-/usr/include/c++/15/bits/stl_function.h:
-
-/usr/include/x86_64-linux-gnu/sys/time.h:
-
-/home/hrishikesh/Downloads/photonix-rewrite/src/sdl3webgpu.h:
+/usr/include/c++/15/bits/quoted_string.h:
 
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL.h:
 
@@ -2108,6 +2145,14 @@ _deps/glm-src/glm/detail/type_mat3x4.hpp:
 
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_keyboard.h:
 
+/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_messagebox.h:
+
+_deps/glm-src/glm/ext/scalar_uint_sized.hpp:
+
+/usr/include/c++/15/bits/uses_allocator_args.h:
+
+/usr/include/c++/15/bits/chrono.h:
+
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_mouse.h:
 
 /usr/include/c++/15/cstddef:
@@ -2124,8 +2169,60 @@ _deps/glm-src/glm/detail/type_mat3x4.hpp:
 
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_stdinc.h:
 
-/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_system.h:
-
 /usr/include/stdint.h:
 
 /home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_thread.h:
+
+/home/hrishikesh/Downloads/photonix-rewrite/third_party/SDL3/include/SDL3/SDL_tray.h:
+
+/usr/include/x86_64-linux-gnu/bits/semaphore.h:
+
+/usr/include/x86_64-linux-gnu/bits/struct_rwlock.h:
+
+/usr/include/c++/15/bits/algorithmfwd.h:
+
+/usr/include/c++/15/bits/atomic_timed_wait.h:
+
+/usr/include/c++/15/iosfwd:
+
+/usr/include/c++/15/bits/chrono_io.h:
+
+_deps/glm-src/glm/ext/matrix_float3x2.hpp:
+
+/usr/include/c++/15/bits/enable_special_members.h:
+
+/usr/include/c++/15/bits/formatfwd.h:
+
+/usr/include/c++/15/bits/locale_conv.h:
+
+/usr/include/c++/15/bits/ostream.tcc:
+
+/usr/include/c++/15/bits/parse_numbers.h:
+
+/usr/include/c++/15/bits/sstream.tcc:
+
+/usr/include/c++/15/bits/stl_algo.h:
+
+/usr/include/x86_64-linux-gnu/bits/unistd_ext.h:
+
+/usr/include/c++/15/bits/uniform_int_dist.h:
+
+/usr/include/c++/15/ctime:
+
+/usr/include/c++/15/streambuf:
+
+/usr/include/c++/15/format:
+
+/usr/include/c++/15/istream:
+
+/usr/include/c++/15/locale:
+
+/usr/include/libintl.h:
+
+/usr/include/x86_64-linux-gnu/bits/thread-shared-types.h:
+
+/usr/include/c++/15/thread:
+
+/usr/include/c++/15/stop_token:
+
+/usr/include/inttypes.h:

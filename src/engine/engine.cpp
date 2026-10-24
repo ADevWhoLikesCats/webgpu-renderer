@@ -1,5 +1,7 @@
 #include "engine_internal.h"
+#include <glm/gtc/matrix_transform.hpp>
 #include "engine/engine.h"
+#include <SDL3/SDL.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -34,6 +36,15 @@ void Engine::shutdown() {
     if (gpu_.uniform_buffer)     { wgpuBufferRelease(gpu_.uniform_buffer);        gpu_.uniform_buffer     = nullptr; }
     if (gpu_.vertex_buffer)      { wgpuBufferRelease(gpu_.vertex_buffer);         gpu_.vertex_buffer      = nullptr; }
     if (gpu_.index_buffer)       { wgpuBufferRelease(gpu_.index_buffer);          gpu_.index_buffer       = nullptr; }
+    if (gpu_.gbuf_albedo_view)   { wgpuTextureViewRelease(gpu_.gbuf_albedo_view);   gpu_.gbuf_albedo_view   = nullptr; }
+    if (gpu_.gbuf_albedo_tex)    { wgpuTextureRelease(gpu_.gbuf_albedo_tex);        gpu_.gbuf_albedo_tex    = nullptr; }
+    if (gpu_.gbuf_normal_view)   { wgpuTextureViewRelease(gpu_.gbuf_normal_view);   gpu_.gbuf_normal_view   = nullptr; }
+    if (gpu_.gbuf_normal_tex)    { wgpuTextureRelease(gpu_.gbuf_normal_tex);        gpu_.gbuf_normal_tex    = nullptr; }
+    if (gpu_.gbuf_material_view) { wgpuTextureViewRelease(gpu_.gbuf_material_view); gpu_.gbuf_material_view = nullptr; }
+    if (gpu_.gbuf_material_tex)  { wgpuTextureRelease(gpu_.gbuf_material_tex);      gpu_.gbuf_material_tex  = nullptr; }
+    if (gpu_.gbuf_sampler)       { wgpuSamplerRelease(gpu_.gbuf_sampler);           gpu_.gbuf_sampler       = nullptr; }
+    if (composite_bg_)  { wgpuBindGroupRelease(composite_bg_);           composite_bg_  = nullptr; }
+    if (composite_bgl_) { wgpuBindGroupLayoutRelease(composite_bgl_);    composite_bgl_ = nullptr; }
     if (!initialized_) return;
     if (surface_.surface) { wgpuSurfaceRelease(surface_.surface); surface_.surface = nullptr; }
     gpu_.destroy();
@@ -273,6 +284,104 @@ bool Engine::init(const char* app_name,
         std::fprintf(stderr, "[engine] uniform buffer + bind group ready\n");
     }
 
+    // ---- G-buffer textures (all RGBA8Unorm, TextureBinding + RenderAttachment) ----
+    auto make_gbuffer_tex = [&](WGPUTexture* out_tex, WGPUTextureView* out_view,
+                                const char* name) -> bool {
+        WGPUTextureDescriptor td = {};
+        td.dimension     = WGPUTextureDimension_2D;
+        td.size          = { width, height, 1 };
+        td.format        = WGPUTextureFormat_RGBA8Unorm;
+        td.mipLevelCount = 1;
+        td.sampleCount   = 1;
+        td.usage         = WGPUTextureUsage_RenderAttachment |
+                           WGPUTextureUsage_TextureBinding |
+                           WGPUTextureUsage_CopySrc;
+        *out_tex = wgpuDeviceCreateTexture(gpu_.device, &td);
+        if (!*out_tex) { std::fprintf(stderr, "[engine] %s texture failed\n", name); return false; }
+        *out_view = wgpuTextureCreateView(*out_tex, nullptr);
+        if (!*out_view) { std::fprintf(stderr, "[engine] %s view failed\n", name); return false; }
+        return true;
+    };
+
+    if (!make_gbuffer_tex(&gpu_.gbuf_albedo_tex,   &gpu_.gbuf_albedo_view,   "gbuf_albedo"))   { shutdown(); return false; }
+    if (!make_gbuffer_tex(&gpu_.gbuf_normal_tex,   &gpu_.gbuf_normal_view,   "gbuf_normal"))   { shutdown(); return false; }
+    if (!make_gbuffer_tex(&gpu_.gbuf_material_tex, &gpu_.gbuf_material_view, "gbuf_material")) { shutdown(); return false; }
+    std::fprintf(stderr, "[engine] G-buffer textures created (%ux%u, RGBA8Unorm x3)\n",
+                 width, height);
+
+    // ---- Sampler for composite pass ----
+    {
+        WGPUSamplerDescriptor sd = {};
+        sd.addressModeU = WGPUAddressMode_ClampToEdge;
+        sd.addressModeV = WGPUAddressMode_ClampToEdge;
+        sd.addressModeW = WGPUAddressMode_ClampToEdge;
+        sd.magFilter    = WGPUFilterMode_Nearest;
+        sd.minFilter    = WGPUFilterMode_Nearest;
+        sd.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        sd.maxAnisotropy = 1;   // WebGPU requires >= 1
+        gpu_.gbuf_sampler = wgpuDeviceCreateSampler(gpu_.device, &sd);
+        if (!gpu_.gbuf_sampler) {
+            err = "gbuf sampler creation failed";
+            shutdown();
+            return false;
+        }
+    }
+
+    // ---- Composite bind group layout (3 textures + 1 sampler at group 1) ----
+    {
+        WGPUBindGroupLayoutEntry entries[4] = {};
+        entries[0].binding    = 0;
+        entries[0].visibility = WGPUShaderStage_Fragment;
+        entries[0].texture.sampleType = WGPUTextureSampleType_Float;
+        entries[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        entries[1].binding    = 1;
+        entries[1].visibility = WGPUShaderStage_Fragment;
+        entries[1].texture.sampleType = WGPUTextureSampleType_Float;
+        entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        entries[2].binding    = 2;
+        entries[2].visibility = WGPUShaderStage_Fragment;
+        entries[2].texture.sampleType = WGPUTextureSampleType_Float;
+        entries[2].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        entries[3].binding    = 3;
+        entries[3].visibility = WGPUShaderStage_Fragment;
+        entries[3].sampler.type = WGPUSamplerBindingType_Filtering;
+
+        WGPUBindGroupLayoutDescriptor bgl_desc = {};
+        bgl_desc.entryCount = 4;
+        bgl_desc.entries    = entries;
+        composite_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl_desc);
+        if (!composite_bgl_) {
+            err = "composite BGL creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupEntry bg_entries[4] = {};
+        bg_entries[0].binding     = 0;
+        bg_entries[0].textureView = gpu_.gbuf_albedo_view;
+        bg_entries[1].binding     = 1;
+        bg_entries[1].textureView = gpu_.gbuf_normal_view;
+        bg_entries[2].binding     = 2;
+        bg_entries[2].textureView = gpu_.gbuf_material_view;
+        bg_entries[3].binding     = 3;
+        bg_entries[3].sampler     = gpu_.gbuf_sampler;
+
+        WGPUBindGroupDescriptor bg_desc = {};
+        bg_desc.layout     = composite_bgl_;
+        bg_desc.entryCount = 4;
+        bg_desc.entries    = bg_entries;
+        composite_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bg_desc);
+        if (!composite_bg_) {
+            err = "composite bind group creation failed";
+            shutdown();
+            return false;
+        }
+        std::fprintf(stderr, "[engine] composite bind group ready\n");
+    }
+
     // ---- Cube geometry ----
     // Vertex layout: pos(vec3) + normal(vec3) + uv(vec2) = 32 bytes.
     // 24 verts (4 per face so normal/uv can be per-face), 36 indices (u16).
@@ -406,25 +515,44 @@ void Engine::resize(uint32_t width, uint32_t height) {
     wgpuSurfaceConfigure(surface_.surface, &cfg);
 }
 
-static WGPURenderPipeline make_triangle_pipeline(WGPUDevice device,
-                                                 WGPUTextureFormat format,
-                                                 WGPUQueue queue) {
-    (void)queue;
-    std::fprintf(stderr, "[engine] make_triangle_pipeline: format=%d\n", (int)format);
-
+static WGPURenderPipeline make_geometry_pipeline(
+    WGPUDevice device, WGPUTextureFormat color_format,
+    WGPUBindGroupLayout uniform_bgl)
+{
     const char* wgsl = R"(
+        struct Uniforms {
+            mvp : mat4x4<f32>,
+            model : mat4x4<f32>,
+        };
+        @group(0) @binding(0) var<uniform> u : Uniforms;
+
+        struct VSIn {
+            @location(0) pos : vec3<f32>,
+            @location(1) normal : vec3<f32>,
+            @location(2) uv : vec2<f32>,
+        };
+        struct VSOut {
+            @builtin(position) clip : vec4<f32>,
+            @location(0) normal : vec3<f32>,
+            @location(1) uv : vec2<f32>,
+        };
+
         @vertex
-        fn vs_main(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
-            var pos = array<vec2f, 3>(
-                vec2f(-1.0, -1.0),
-                vec2f( 3.0, -1.0),
-                vec2f(-1.0,  3.0)
-            );
-            return vec4f(pos[i], 0.0, 1.0);
+        fn vs_main(in : VSIn) -> VSOut {
+            var out : VSOut;
+            out.clip   = u.mvp * vec4<f32>(in.pos, 1.0);
+            out.normal = in.normal;
+            out.uv     = in.uv;
+            return out;
         }
+
         @fragment
-        fn fs_main() -> @location(0) vec4f {
-            return vec4f(0.0, 1.0, 0.0, 1.0);
+        fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
+            // Simple fake shade using normal so faces are distinguishable.
+            let n = normalize(in.normal);
+            let light = vec3<f32>(0.4, 0.8, 0.3);
+            let d = max(dot(n, normalize(light)), 0.0);
+            return vec4<f32>(vec3<f32>(1.0, 0.5, 0.1) * (0.3 + 0.7 * d), 1.0);
         }
     )";
 
@@ -436,11 +564,10 @@ static WGPURenderPipeline make_triangle_pipeline(WGPUDevice device,
     WGPUShaderModuleDescriptor smd = {};
     smd.nextInChain = &wgsl_src.chain;
     WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
-    std::fprintf(stderr, "[engine] shader module: %p\n", (void*)mod);
-    if (!mod) return nullptr;
+    if (!mod) { std::fprintf(stderr, "[engine] cube shader module failed\n"); return nullptr; }
 
     WGPUColorTargetState ct = {};
-    ct.format    = format;
+    ct.format    = color_format;
     ct.writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState fs = {};
@@ -450,161 +577,133 @@ static WGPURenderPipeline make_triangle_pipeline(WGPUDevice device,
     fs.targetCount = 1;
     fs.targets     = &ct;
 
+    WGPUVertexAttribute attrs[3] = {};
+    attrs[0].format         = WGPUVertexFormat_Float32x3;
+    attrs[0].offset         = 0;
+    attrs[0].shaderLocation = 0;
+    attrs[1].format         = WGPUVertexFormat_Float32x3;
+    attrs[1].offset         = 12;
+    attrs[1].shaderLocation = 1;
+    attrs[2].format         = WGPUVertexFormat_Float32x2;
+    attrs[2].offset         = 24;
+    attrs[2].shaderLocation = 2;
+
+    WGPUVertexBufferLayout vbl = {};
+    vbl.stepMode       = WGPUVertexStepMode_Vertex;
+    vbl.arrayStride    = 32;
+    vbl.attributeCount = 3;
+    vbl.attributes     = attrs;
+
     WGPUVertexState vs = {};
     vs.module      = mod;
     vs.entryPoint.data   = "vs_main";
     vs.entryPoint.length = 7;
-    vs.bufferCount = 0;
-    vs.buffers     = nullptr;
+    vs.bufferCount = 1;
+    vs.buffers     = &vbl;
 
     WGPUPrimitiveState prim = {};
     prim.topology  = WGPUPrimitiveTopology_TriangleList;
     prim.frontFace = WGPUFrontFace_CCW;
-    prim.cullMode  = WGPUCullMode_None;
+    prim.cullMode  = WGPUCullMode_None;  // show all faces while debugging
 
     WGPUMultisampleState ms = {};
     ms.count = 1;
     ms.mask  = 0xFFFFFFFF;
 
+    WGPUDepthStencilState ds = {};
+    ds.format            = WGPUTextureFormat_Depth32Float;
+    ds.depthWriteEnabled = WGPUOptionalBool_True;
+    ds.depthCompare      = WGPUCompareFunction_Less;
+    ds.stencilFront.compare = WGPUCompareFunction_Always;
+    ds.stencilBack.compare  = WGPUCompareFunction_Always;
+
+    WGPUPipelineLayoutDescriptor pl_desc = {};
+    pl_desc.bindGroupLayoutCount = 1;
+    pl_desc.bindGroupLayouts     = &uniform_bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
+    if (!pl) { std::fprintf(stderr, "[engine] cube pipeline layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
+
     WGPURenderPipelineDescriptor pd = {};
+    pd.layout      = pl;
     pd.vertex      = vs;
     pd.primitive   = prim;
     pd.multisample = ms;
     pd.fragment    = &fs;
+    pd.depthStencil = &ds;
 
     WGPURenderPipeline pipe = wgpuDeviceCreateRenderPipeline(device, &pd);
-    std::fprintf(stderr, "[engine] pipeline: %p\n", (void*)pipe);
+    wgpuPipelineLayoutRelease(pl);
     wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] cube pipeline: %p\n", (void*)pipe);
     return pipe;
 }
+
 
 #include <vector>
 #include <cstdio>
 
 void Engine::begin_frame() {
-    if (!initialized_) { std::fprintf(stderr, "[engine] not initialized\n"); return; }
-    if (!offscreen_color_) { std::fprintf(stderr, "[engine] no offscreen tex\n"); return; }
-    if (!offscreen_view_)  { std::fprintf(stderr, "[engine] no offscreen view\n"); return; }
+    if (!initialized_ || !offscreen_color_ || !gpu_.depth_view) return;
 
-    if (!triangle_pipeline_ready_) {
-        triangle_pipeline_ = make_triangle_pipeline(
-            gpu_.device, offscreen_format_, gpu_.queue);
-        triangle_pipeline_ready_ = true;
-        std::fprintf(stderr, "[engine] pipeline created: %p\n",
-                     (void*)triangle_pipeline_);
-        if (!triangle_pipeline_) return;
+    if (!geometry_pipeline_ready_) {
+        geometry_pipeline_ = make_geometry_pipeline(
+            gpu_.device, offscreen_format_, gpu_.uniform_bgl);
+        geometry_pipeline_ready_ = true;
+        if (!geometry_pipeline_) { std::fprintf(stderr, "[engine] no cube pipeline\n"); return; }
     }
 
+    // ---- Compute MVP ----
+    float t = (float)SDL_GetTicks() / 1000.0f;
+    glm::mat4 model = glm::rotate(glm::mat4(1.0f), t * 0.8f, glm::vec3(0.4f, 1.0f, 0.2f));
+    glm::mat4 view  = glm::lookAt(glm::vec3(2.5f, 2.5f, 2.5f),
+                                  glm::vec3(0.0f, 0.0f, 0.0f),
+                                  glm::vec3(0.0f, 1.0f, 0.0f));
+    float aspect = (float)offscreen_width_ / (float)offscreen_height_;
+    glm::mat4 proj = glm::perspective(glm::radians(60.0f), aspect, 0.1f, 100.0f);
+    proj[1][1] *= -1.0f;  // WebGPU clip space: Y down
+    glm::mat4 mvp = proj * view * model;
+
+    struct { glm::mat4 mvp; glm::mat4 model; } ubo;
+    ubo.mvp = mvp; ubo.model = model;
+    wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0, &ubo, sizeof(ubo));
+
+    // ---- Render pass ----
     WGPURenderPassColorAttachment color = {};
     color.view       = offscreen_view_;
-    color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;  // NOT 0 — 0 means "3D slice"
+    color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     color.loadOp     = WGPULoadOp_Clear;
     color.storeOp    = WGPUStoreOp_Store;
-    color.clearValue = {1.0, 0.0, 0.0, 1.0};  // RED diagnostic
+    color.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+
+    WGPURenderPassDepthStencilAttachment depth = {};
+    depth.view            = gpu_.depth_view;
+    depth.depthLoadOp     = WGPULoadOp_Clear;
+    depth.depthStoreOp    = WGPUStoreOp_Store;
+    depth.depthClearValue = 1.0f;
+    depth.depthReadOnly   = false;
 
     WGPURenderPassDescriptor pass = {};
-    pass.colorAttachmentCount = 1;
-    pass.colorAttachments     = &color;
+    pass.colorAttachmentCount     = 1;
+    pass.colorAttachments         = &color;
+    pass.depthStencilAttachment   = &depth;
 
     WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
     WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &pass);
-    wgpuRenderPassEncoderSetPipeline(rp, triangle_pipeline_);
-    wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
+    wgpuRenderPassEncoderSetPipeline(rp, geometry_pipeline_);
+    wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
+    wgpuRenderPassEncoderSetVertexBuffer(rp, 0, gpu_.vertex_buffer, 0, 24 * 32);
+    wgpuRenderPassEncoderSetIndexBuffer(rp, gpu_.index_buffer,
+                                        WGPUIndexFormat_Uint16, 0, 36 * 2);
+    wgpuRenderPassEncoderDrawIndexed(rp, 36, 1, 0, 0, 0);
     wgpuRenderPassEncoderEnd(rp);
 
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
     wgpuQueueSubmit(gpu_.queue, 1, &cmd);
-
-    std::fprintf(stderr,
-        "[engine] pass submitted view=%p pipeline=%p\n",
-        (void*)offscreen_view_, (void*)triangle_pipeline_);
-
     wgpuCommandBufferRelease(cmd);
     wgpuRenderPassEncoderRelease(rp);
     wgpuCommandEncoderRelease(enc);
 
-    frame_index_++;
-    if (std::getenv("PHX_DUMP_PPM") && (frame_index_ % 60) == 0) {
-        const uint32_t w = offscreen_width_;
-        const uint32_t h = offscreen_height_;
-        const uint32_t bytes_per_row = w * 4;
-        const uint64_t buffer_size = (uint64_t)bytes_per_row * h;
-
-        WGPUBufferDescriptor bd = {};
-        bd.size  = buffer_size;
-        bd.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-        WGPUBuffer buf = wgpuDeviceCreateBuffer(gpu_.device, &bd);
-
-        WGPUTexelCopyTextureInfo src = {};
-        src.texture  = offscreen_color_;
-        src.mipLevel = 0;
-        src.origin   = {0, 0, 0};
-
-        WGPUTexelCopyBufferInfo dst = {};
-        dst.buffer = buf;
-        dst.layout.bytesPerRow  = bytes_per_row;
-        dst.layout.rowsPerImage = h;
-        dst.layout.offset       = 0;
-
-        WGPUCommandEncoder re = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
-        WGPUExtent3D extent = {w, h, 1};
-        wgpuCommandEncoderCopyTextureToBuffer(re, &src, &dst, &extent);
-        WGPUCommandBuffer rc = wgpuCommandEncoderFinish(re, nullptr);
-        wgpuQueueSubmit(gpu_.queue, 1, &rc);
-        wgpuCommandBufferRelease(rc);
-        wgpuCommandEncoderRelease(re);
-
-        struct MapState { bool done = false; bool ok = false; };
-        MapState ms;
-        WGPUBufferMapCallbackInfo mcb = {};
-        mcb.mode = WGPUCallbackMode_AllowSpontaneous;
-        mcb.callback = [](WGPUMapAsyncStatus st, WGPUStringView /*msg*/,
-                          void* ud1, void* /*ud2*/) {
-            auto* m = static_cast<MapState*>(ud1);
-            m->done = true;
-            m->ok = (st == WGPUMapAsyncStatus_Success);
-        };
-        mcb.userdata1 = &ms;
-        wgpuBufferMapAsync(buf, WGPUMapMode_Read, 0, buffer_size, mcb);
-        int waited = 0;
-        while (!ms.done && waited < 2000) {
-            wgpuInstanceProcessEvents(gpu_.instance);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            waited++;
-        }
-
-        if (ms.ok) {
-            const uint8_t* px =
-                (const uint8_t*)wgpuBufferGetConstMappedRange(buf, 0, buffer_size);
-            const char* out = "/tmp/photonix-frame.ppm";
-            std::FILE* f = std::fopen(out, "wb");
-            if (f) {
-                std::fprintf(f, "P6\n%u %u\n255\n", w, h);
-                std::vector<uint8_t> rgb((size_t)w * h * 3);
-                for (uint64_t i = 0, j = 0; i < buffer_size; i += 4, j += 3) {
-                    rgb[j+0] = px[i+2];
-                    rgb[j+1] = px[i+1];
-                    rgb[j+2] = px[i+0];
-                }
-                std::fwrite(rgb.data(), 1, rgb.size(), f);
-                std::fclose(f);
-                std::fprintf(stderr, "[engine] wrote %s (%ux%u)\n", out, w, h);
-            }
-            std::fprintf(stderr, "[engine] first texel BGRA: %02x %02x %02x %02x\n",
-                         px[0], px[1], px[2], px[3]);
-            wgpuBufferUnmap(buf);
-        } else {
-            std::fprintf(stderr, "[engine] map failed\n");
-        }
-        wgpuBufferRelease(buf);
-    }
-
-
-    // ---- Present offscreen -> swapchain -> compositor ----
-    // If this path works, we have a live window. If the window is black
-    // while the PPM dump shows the same frame correctly, we've confirmed
-    // the Mesa Wayland WSI present bug (present returns Success, compositor
-    // never sees the frame).
+    // ---- Present ----
     if (surface_.surface) {
         WGPUSurfaceTexture stex = {};
         wgpuSurfaceGetCurrentTexture(surface_.surface, &stex);
@@ -624,20 +723,12 @@ void Engine::begin_frame() {
             wgpuQueueSubmit(gpu_.queue, 1, &pc);
             wgpuCommandBufferRelease(pc);
             wgpuCommandEncoderRelease(pe);
-            WGPUStatus status = wgpuSurfacePresent(surface_.surface);
-            static int present_ok = 0;
-            if (present_ok < 5) {
-                std::fprintf(stderr, "[engine] present frame %d status=%d\n",
-                             present_ok, (int)status);
-                present_ok++;
-            }
+            wgpuSurfacePresent(surface_.surface);
             wgpuTextureRelease(stex.texture);
-        } else {
-            std::fprintf(stderr, "[engine] getCurrentTexture returned null (status=%d)\n",
-                         (int)stex.status);
         }
     }
 }
+
 
 void Engine::end_frame() {}
 void Engine::tick()        { if (gpu_.instance) wgpuInstanceProcessEvents(gpu_.instance); }
