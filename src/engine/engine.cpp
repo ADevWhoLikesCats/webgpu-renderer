@@ -1448,29 +1448,81 @@ void Engine::begin_frame() {
                     instance_idx_buffer = wgpuDeviceCreateBuffer(gpu_.device, &ibd);
                     instance_idx_capacity = ibd.size;
                 }
-                {
-                    std::vector<uint32_t> instance_indices(visible.size());
-                    for (size_t i = 0; i < visible.size(); ++i)
-                        instance_indices[i] = (uint32_t)i;  // VISIBLE SLOT, not object index
-                    wgpuQueueWriteBuffer(gpu_.queue, instance_idx_buffer, 0,
-                                         instance_indices.data(), instance_indices.size() * 4);
+                // Group visible objects by mesh. Each unique mesh gets one
+                // draw call with instance_count = number of visible objects
+                // referencing that mesh.
+                struct MeshBatch {
+                    uint32_t mesh_index;
+                    uint32_t first_instance;
+                    uint32_t instance_count;
+                };
+
+                // Reverse map: object index -> uniform slot.
+                // Uniforms were packed in `visible` order (visible[k] at slot k).
+                std::vector<uint32_t> uniform_slot_of(scene_.objects.size(), 0);
+                for (uint32_t slot = 0; slot < (uint32_t)visible.size(); ++slot) {
+                    uniform_slot_of[visible[slot]] = slot;
+                }
+
+                // Sort visible objects by mesh index.
+                std::vector<uint32_t> visible_by_mesh = visible;
+                std::sort(visible_by_mesh.begin(), visible_by_mesh.end(),
+                    [&](uint32_t a, uint32_t b) {
+                        return scene_.objects[a].mesh_index <
+                               scene_.objects[b].mesh_index;
+                    });
+
+                // Build batches + instance buffer (uniform slots, in mesh order).
+                std::vector<MeshBatch> batches;
+                batches.reserve(64);
+                std::vector<uint32_t> instance_slots;
+                instance_slots.reserve(visible.size());
+
+                for (uint32_t obj_index : visible_by_mesh) {
+                    uint32_t mesh_idx = scene_.objects[obj_index].mesh_index;
+                    if (batches.empty() || batches.back().mesh_index != mesh_idx) {
+                        MeshBatch b;
+                        b.mesh_index     = mesh_idx;
+                        b.first_instance = (uint32_t)instance_slots.size();
+                        b.instance_count = 0;
+                        batches.push_back(b);
+                    }
+                    instance_slots.push_back(uniform_slot_of[obj_index]);
+                    batches.back().instance_count++;
+                }
+
+                wgpuQueueWriteBuffer(gpu_.queue, instance_idx_buffer, 0,
+                                     instance_slots.data(),
+                                     instance_slots.size() * 4);
+
+                static uint32_t last_batch_count = 0;
+                if (last_batch_count == 0) {
+                    std::fprintf(stderr,
+                        "[engine] instancing: %zu draws for %zu visible objects "
+                        "(%.1f draws/object saved)\n",
+                        batches.size(), visible.size(),
+                        visible.size() > 0
+                            ? 100.0f * (1.0f - (float)batches.size() / (float)visible.size())
+                            : 0.0f);
+                    last_batch_count = (uint32_t)batches.size();
                 }
 
                 wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
 
-                for (uint32_t slot = 0; slot < (uint32_t)visible.size(); ++slot) {
-                    const auto& obj  = scene_.objects[visible[slot]];
-                    const auto& mesh = scene_.meshes[obj.mesh_index];
+                for (const auto& b : batches) {
+                    const auto& mesh = scene_.meshes[b.mesh_index];
+                    const auto& mat  = scene_.materials[mesh.material_index];
 
-                    wgpuRenderPassEncoderSetBindGroup(rp, 1,
-                        scene_.materials[obj.material_index].bind_group, 0, nullptr);
+                    wgpuRenderPassEncoderSetBindGroup(rp, 1, mat.bind_group, 0, nullptr);
                     wgpuRenderPassEncoderSetVertexBuffer(rp, 0, mesh.vertex_buffer, 0,
                         mesh.vertex_count * 48);
                     wgpuRenderPassEncoderSetVertexBuffer(rp, 1, instance_idx_buffer,
-                        (uint64_t)slot * 4, 4);
+                        (uint64_t)b.first_instance * 4,
+                        (uint64_t)b.instance_count * 4);
                     wgpuRenderPassEncoderSetIndexBuffer(rp, mesh.index_buffer,
                         WGPUIndexFormat_Uint32, 0, mesh.index_count * 4);
-                    wgpuRenderPassEncoderDrawIndexed(rp, mesh.index_count, 1, 0, 0, 0);
+                    wgpuRenderPassEncoderDrawIndexed(rp, mesh.index_count,
+                        b.instance_count, 0, 0, 0);
                 }
             }
             wgpuRenderPassEncoderEnd(rp);
