@@ -380,10 +380,13 @@ bool Engine::init(const char* app_name,
             gpu_.cull_mesh_offsets_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         }
         // Flat bucket array: object indices grouped by mesh.
+        // NOTE: needs Vertex usage because the draw loop binds it as a
+        // per-instance vertex buffer (slot 1).
         {
             WGPUBufferDescriptor bd = {};
             bd.size  = (uint64_t)gpu_.cull_aabb_capacity * 4ull;
-            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst |
+                       WGPUBufferUsage_CopySrc | WGPUBufferUsage_Vertex;
             gpu_.cull_mesh_buckets_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         }
         // Indirect draw args, one 20-byte entry per mesh.
@@ -1523,7 +1526,10 @@ static WGPUComputePipeline make_indirect_build_pipeline(
             args[base + 1u] = mesh_cnts[m];
             args[base + 2u] = 0u;
             args[base + 3u] = 0u;
-            args[base + 4u] = mesh_offs[m];
+            args[base + 4u] = 0u;  // first_instance: 0 because the vertex buffer
+                                    // is already bound at the per-mesh bucket
+                                    // offset (mesh_offsets[m]*4). Setting this to
+                                    // mesh_offs[m] would double-offset.
         }
     )";
 
@@ -1712,185 +1718,10 @@ void Engine::begin_frame() {
             wgpuComputePassEncoderEnd(cp);
             wgpuComputePassEncoderRelease(cp);
 
-            // Read back the count for verification (3b only — 3c will consume
-            // it directly on GPU without a readback).
-            WGPUBufferDescriptor bd_rb = {};
-            bd_rb.size  = 4;
-            bd_rb.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-            WGPUBuffer readback = wgpuDeviceCreateBuffer(gpu_.device, &bd_rb);
-            wgpuCommandEncoderCopyBufferToBuffer(cull_enc,
-                gpu_.cull_output_buffer, 0, readback, 0, 4);
-
             WGPUCommandBuffer cull_cmd = wgpuCommandEncoderFinish(cull_enc, nullptr);
             wgpuQueueSubmit(gpu_.queue, 1, &cull_cmd);
             wgpuCommandBufferRelease(cull_cmd);
             wgpuCommandEncoderRelease(cull_enc);
-
-            // Map-read the count (blocking, 100ms cap).
-            struct MapState { bool done = false; bool ok = false; } ms;
-            WGPUBufferMapCallbackInfo mcb = {};
-            mcb.mode = WGPUCallbackMode_AllowSpontaneous;
-            mcb.callback = [](WGPUMapAsyncStatus st, WGPUStringView, void* u1, void*) {
-                auto* m = static_cast<MapState*>(u1);
-                m->done = true;
-                m->ok = (st == WGPUMapAsyncStatus_Success);
-            };
-            mcb.userdata1 = &ms;
-            wgpuBufferMapAsync(readback, WGPUMapMode_Read, 0, 4, mcb);
-            int waited = 0;
-            while (!ms.done && waited < 100) {
-                wgpuInstanceProcessEvents(gpu_.instance);
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                waited++;
-            }
-            if (ms.ok) {
-                const uint32_t* gpu_count = (const uint32_t*)
-                    wgpuBufferGetConstMappedRange(readback, 0, 4);
-                static uint32_t last_log = 0xFFFFFFFF;
-                if (gpu_count[0] != last_log) {
-                    std::fprintf(stderr,
-                        "[engine] cull GPU: %u visible\n", gpu_count[0]);
-                    last_log = gpu_count[0];
-                }
-                wgpuBufferUnmap(readback);
-            }
-            wgpuBufferRelease(readback);
-
-            // 3c-1a: readback per-mesh counts, verify against CPU.
-            {
-                static bool done_mesh_verify = false;
-                if (!done_mesh_verify) {
-                    uint64_t n_meshes = scene_.meshes.size();
-                    WGPUBufferDescriptor bd_mesh = {};
-                    bd_mesh.size  = n_meshes * 4;
-                    bd_mesh.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-                    WGPUBuffer mesh_rb = wgpuDeviceCreateBuffer(gpu_.device, &bd_mesh);
-
-                    WGPUCommandEncoder enc2 = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
-                    wgpuCommandEncoderCopyBufferToBuffer(enc2,
-                        gpu_.cull_mesh_counts_buffer, 0, mesh_rb, 0, n_meshes * 4);
-                    WGPUCommandBuffer cmd2 = wgpuCommandEncoderFinish(enc2, nullptr);
-                    wgpuQueueSubmit(gpu_.queue, 1, &cmd2);
-                    wgpuCommandBufferRelease(cmd2);
-                    wgpuCommandEncoderRelease(enc2);
-
-                    struct MapState2 { bool done = false; bool ok = false; } ms2;
-                    WGPUBufferMapCallbackInfo mcb2 = {};
-                    mcb2.mode = WGPUCallbackMode_AllowSpontaneous;
-                    mcb2.callback = [](WGPUMapAsyncStatus st, WGPUStringView, void* u1, void*) {
-                        auto* m = static_cast<MapState2*>(u1);
-                        m->done = true; m->ok = (st == WGPUMapAsyncStatus_Success);
-                    };
-                    mcb2.userdata1 = &ms2;
-                    wgpuBufferMapAsync(mesh_rb, WGPUMapMode_Read, 0, n_meshes * 4, mcb2);
-                    int waited2 = 0;
-                    while (!ms2.done && waited2 < 200) {
-                        wgpuInstanceProcessEvents(gpu_.instance);
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                        waited2++;
-                    }
-                    if (ms2.ok) {
-                        const uint32_t* gpu_mesh = (const uint32_t*)
-                            wgpuBufferGetConstMappedRange(mesh_rb, 0, n_meshes * 4);
-                        // CPU-side expected per-mesh count. Compute a fresh
-                        // CPU cull with the same frustum the GPU saw.
-                        Frustum6 cpu_frustum = extract_frustum(mvp_proj_view);
-                        std::vector<uint32_t> cpu_mesh(n_meshes, 0);
-                        for (uint32_t i = 0; i < (uint32_t)scene_.objects.size(); ++i) {
-                            const auto& obj  = scene_.objects[i];
-                            const auto& mesh = scene_.meshes[obj.mesh_index];
-                            glm::vec3 wmin, wmax;
-                            transform_aabb(mesh.aabb_min, mesh.aabb_max, obj.transform, wmin, wmax);
-                            if (frustum_test_aabb(cpu_frustum, wmin, wmax)) {
-                                cpu_mesh[obj.mesh_index]++;
-                            }
-                        }
-                        uint64_t matches = 0;
-                        uint64_t diffs = 0;
-                        for (uint64_t i = 0; i < n_meshes; ++i) {
-                            if (gpu_mesh[i] == cpu_mesh[i]) matches++;
-                            else diffs++;
-                        }
-                        std::fprintf(stderr,
-                            "[engine] per-mesh counts: %llu / %llu match (%llu differ)\n",
-                            (unsigned long long)matches,
-                            (unsigned long long)n_meshes,
-                            (unsigned long long)diffs);
-                        wgpuBufferUnmap(mesh_rb);
-                        done_mesh_verify = true;
-
-                        // 3c-1b verification: read back buckets, confirm that
-                        // for each mesh, the bucketed entries are exactly the
-                        // visible objects of that mesh (set equality).
-                        WGPUBufferDescriptor bd_bkt = {};
-                        bd_bkt.size  = (uint64_t)scene_.objects.size() * 4;
-                        bd_bkt.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-                        WGPUBuffer bkt_rb = wgpuDeviceCreateBuffer(gpu_.device, &bd_bkt);
-                        WGPUCommandEncoder enc3 = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
-                        wgpuCommandEncoderCopyBufferToBuffer(enc3,
-                            gpu_.cull_mesh_buckets_buffer, 0,
-                            bkt_rb, 0, (uint64_t)scene_.objects.size() * 4);
-                        WGPUCommandBuffer cmd3 = wgpuCommandEncoderFinish(enc3, nullptr);
-                        wgpuQueueSubmit(gpu_.queue, 1, &cmd3);
-                        wgpuCommandBufferRelease(cmd3);
-                        wgpuCommandEncoderRelease(enc3);
-
-                        struct MapState3 { bool done=false; bool ok=false; } ms3;
-                        WGPUBufferMapCallbackInfo mcb3 = {};
-                        mcb3.mode = WGPUCallbackMode_AllowSpontaneous;
-                        mcb3.callback = [](WGPUMapAsyncStatus st, WGPUStringView, void* u1, void*) {
-                            auto* m = static_cast<MapState3*>(u1);
-                            m->done = true; m->ok = (st == WGPUMapAsyncStatus_Success);
-                        };
-                        mcb3.userdata1 = &ms3;
-                        wgpuBufferMapAsync(bkt_rb, WGPUMapMode_Read, 0,
-                                          (uint64_t)scene_.objects.size() * 4, mcb3);
-                        int w3 = 0;
-                        while (!ms3.done && w3 < 200) {
-                            wgpuInstanceProcessEvents(gpu_.instance);
-                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                            w3++;
-                        }
-                        if (ms3.ok) {
-                            const uint32_t* bkt = (const uint32_t*)
-                                wgpuBufferGetConstMappedRange(bkt_rb, 0,
-                                    (uint64_t)scene_.objects.size() * 4);
-                            // Recompute mesh_offsets + expected buckets on CPU.
-                            uint32_t n_meshes2 = (uint32_t)scene_.meshes.size();
-                            std::vector<uint32_t> cpu_offsets(n_meshes2, 0);
-                            std::vector<uint32_t> cpu_counts(n_meshes2, 0);
-                            for (uint32_t i = 0; i < (uint32_t)scene_.objects.size(); ++i) {
-                                cpu_counts[scene_.objects[i].mesh_index]++;
-                            }
-                            uint32_t running2 = 0;
-                            for (uint32_t m = 0; m < n_meshes2; ++m) {
-                                cpu_offsets[m] = running2;
-                                running2 += cpu_counts[m];
-                            }
-                            // For each visible object, expected bucket slot
-                            // is cpu_offsets[mesh_id] + (index within that mesh's
-                            // visible set). Hard to compute exactly without
-                            // per-mesh ordering. Simpler check: multiset compare.
-                            std::vector<uint32_t> gpu_sorted;
-                            for (uint32_t i = 0; i < (uint32_t)scene_.objects.size(); ++i) {
-                                if (bkt[i] != 0xFFFFFFFFu && bkt[i] < scene_.objects.size()) {
-                                    gpu_sorted.push_back(bkt[i]);
-                                }
-                            }
-                            // Compare against flat list readback (from cull_indices_buffer)
-                            std::vector<uint32_t> flat_sorted;
-                            // We don't have flat list readback in this scope; skip strict compare,
-                            // just report bucket contents count and range.
-                            std::fprintf(stderr,
-                                "[engine] cull buckets: %zu entries populated\n",
-                                gpu_sorted.size());
-                            wgpuBufferUnmap(bkt_rb);
-                        }
-                        wgpuBufferRelease(bkt_rb);
-                    }
-                    wgpuBufferRelease(mesh_rb);
-                }
-            }
         }
     }
 
@@ -2009,141 +1840,60 @@ void Engine::begin_frame() {
                 const uint32_t kStride = 160;
                 const uint32_t N = (uint32_t)scene_.objects.size();
 
-                // Frustum cull: build visible list + their uniforms in one pass.
-                Frustum6 frustum = extract_frustum(mvp_proj_view);
-                std::vector<uint32_t> visible;
-                visible.reserve(N);
-
+                // Write uniform data for ALL objects (uniform slot == object index).
+                // No CPU cull. The GPU culler writes visible buckets; the draw
+                // loop below uses DrawIndexedIndirect per mesh.
                 struct U {
                     glm::mat4 mvp;
                     glm::mat4 model;
                     glm::vec4 material_color;
                     glm::vec4 material_params;
                 };
-                // Write uniform data for ALL objects (not just visible).
-                // Uniform slot == object index. This aligns the GPU culler's
-                // output (object indices in mesh buckets) with the per-instance
-                // vertex buffer that the shader consumes.
                 std::vector<uint8_t> uniform_data((size_t)N * kStride, 0);
 
                 for (uint32_t i = 0; i < N; ++i) {
                     const auto& obj  = scene_.objects[i];
-                    const auto& mesh = scene_.meshes[obj.mesh_index];
                     const auto& mat  = scene_.materials[obj.material_index];
-
                     U u = {};
                     u.mvp    = mvp_proj_view * obj.transform;
                     u.model  = obj.transform;
                     u.material_color  = mat.base_color;
                     u.material_params = glm::vec4(mat.roughness, mat.metallic, mat.ao, 0.0f);
                     std::memcpy(uniform_data.data() + (size_t)i * kStride, &u, sizeof(u));
-
-                    // Cull for the CPU-side batching below (unchanged behavior).
-                    glm::vec3 wmin, wmax;
-                    transform_aabb(mesh.aabb_min, mesh.aabb_max, obj.transform,
-                                   wmin, wmax);
-                    if (frustum_test_aabb(frustum, wmin, wmax)) {
-                        visible.push_back(i);
-                    }
                 }
-
-                static uint32_t last_v = 0;
-                if ((last_v / 60) != ((uint32_t)visible.size() / 60)) {
-                    std::fprintf(stderr,
-                        "[engine] frustum cull: %zu / %u visible (%.1f%%)\n",
-                        visible.size(), N,
-                        100.0f * (float)visible.size() / std::max(1u, N));
-                    last_v = (uint32_t)visible.size();
-                }
-
                 if (!uniform_data.empty()) {
                     wgpuQueueWriteBuffer(gpu_.queue, gpu_.uniform_buffer, 0,
                                          uniform_data.data(), uniform_data.size());
                 }
 
-                // Per-instance vertex buffer: one u32 per visible object = the
-                // VISIBLE-SLOT index (0..N-1). The shader reads u_arr[obj_idx],
-                // and uniforms were packed in visible-slot order, so obj_idx
-                // must equal the visible slot, not the object index.
-                static WGPUBuffer instance_idx_buffer = nullptr;
-                static uint64_t instance_idx_capacity = 0;
-                uint64_t needed = (uint64_t)visible.size() * 4;
-                if (instance_idx_buffer == nullptr || instance_idx_capacity < needed) {
-                    if (instance_idx_buffer) wgpuBufferRelease(instance_idx_buffer);
-                    WGPUBufferDescriptor ibd = {};
-                    ibd.size  = std::max<uint64_t>(needed, 256);
-                    ibd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-                    instance_idx_buffer = wgpuDeviceCreateBuffer(gpu_.device, &ibd);
-                    instance_idx_capacity = ibd.size;
-                }
-                // Group visible objects by mesh. Each unique mesh gets one
-                // draw call with instance_count = number of visible objects
-                // referencing that mesh.
-                struct MeshBatch {
-                    uint32_t mesh_index;
-                    uint32_t first_instance;
-                    uint32_t instance_count;
-                };
-
-                // Sort visible objects by mesh index.
-                std::vector<uint32_t> visible_by_mesh = visible;
-                std::sort(visible_by_mesh.begin(), visible_by_mesh.end(),
-                    [&](uint32_t a, uint32_t b) {
-                        return scene_.objects[a].mesh_index <
-                               scene_.objects[b].mesh_index;
-                    });
-
-                // Build batches + instance buffer (uniform slots, in mesh order).
-                std::vector<MeshBatch> batches;
-                batches.reserve(64);
-                std::vector<uint32_t> instance_slots;
-                instance_slots.reserve(visible.size());
-
-                for (uint32_t obj_index : visible_by_mesh) {
-                    uint32_t mesh_idx = scene_.objects[obj_index].mesh_index;
-                    if (batches.empty() || batches.back().mesh_index != mesh_idx) {
-                        MeshBatch b;
-                        b.mesh_index     = mesh_idx;
-                        b.first_instance = (uint32_t)instance_slots.size();
-                        b.instance_count = 0;
-                        batches.push_back(b);
-                    }
-                    instance_slots.push_back(obj_index);  // object index = uniform slot
-                    batches.back().instance_count++;
-                }
-
-                wgpuQueueWriteBuffer(gpu_.queue, instance_idx_buffer, 0,
-                                     instance_slots.data(),
-                                     instance_slots.size() * 4);
-
-                static uint32_t last_batch_count = 0;
-                if (last_batch_count == 0) {
-                    std::fprintf(stderr,
-                        "[engine] instancing: %zu draws for %zu visible objects "
-                        "(%.1f draws/object saved)\n",
-                        batches.size(), visible.size(),
-                        visible.size() > 0
-                            ? 100.0f * (1.0f - (float)batches.size() / (float)visible.size())
-                            : 0.0f);
-                    last_batch_count = (uint32_t)batches.size();
-                }
-
                 wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
 
-                for (const auto& b : batches) {
-                    const auto& mesh = scene_.meshes[b.mesh_index];
+                // GPU-driven draw loop. For each mesh, bind its vertex/index
+                // buffers and the per-instance bucket slice, then issue a
+                // DrawIndexedIndirect. The GPU consumes the indirect args
+                // buffer (index_count, instance_count, first_instance) that
+                // was built by the compute pass above.
+                uint32_t n_meshes = (uint32_t)scene_.meshes.size();
+                for (uint32_t m = 0; m < n_meshes; ++m) {
+                    const auto& mesh = scene_.meshes[m];
                     const auto& mat  = scene_.materials[mesh.material_index];
 
                     wgpuRenderPassEncoderSetBindGroup(rp, 1, mat.bind_group, 0, nullptr);
                     wgpuRenderPassEncoderSetVertexBuffer(rp, 0, mesh.vertex_buffer, 0,
                         mesh.vertex_count * 48);
-                    wgpuRenderPassEncoderSetVertexBuffer(rp, 1, instance_idx_buffer,
-                        (uint64_t)b.first_instance * 4,
-                        (uint64_t)b.instance_count * 4);
+                    // Bind the entire per-mesh bucket region. The GPU uses
+                    // `instance_count` from the indirect args to decide how
+                    // many instances to draw, so binding the full possible
+                    // size is safe.
+                    wgpuRenderPassEncoderSetVertexBuffer(rp, 1,
+                        gpu_.cull_mesh_buckets_buffer,
+                        (uint64_t)scene_.mesh_offsets[m] * 4ull,
+                        (uint64_t)scene_.mesh_object_count[m] * 4ull);
                     wgpuRenderPassEncoderSetIndexBuffer(rp, mesh.index_buffer,
                         WGPUIndexFormat_Uint32, 0, mesh.index_count * 4);
-                    wgpuRenderPassEncoderDrawIndexed(rp, mesh.index_count,
-                        b.instance_count, 0, 0, 0);
+                    wgpuRenderPassEncoderDrawIndexedIndirect(rp,
+                        gpu_.cull_indirect_args_buffer,
+                        (uint64_t)m * 20ull);
                 }
             }
             wgpuRenderPassEncoderEnd(rp);
@@ -2821,6 +2571,10 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
                 }
                 wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_mesh_offsets_buffer, 0,
                                      mesh_offsets.data(), mesh_offsets.size() * 4);
+
+                // Persist on CPU side for the draw loop.
+                scene_.mesh_offsets    = mesh_offsets;
+                scene_.mesh_object_count = mesh_obj_count;
                 std::fprintf(stderr,
                     "[engine] cull mesh_offsets: %u meshes, %u total capacity\n",
                     n_meshes, running);

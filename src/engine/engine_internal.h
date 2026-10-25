@@ -132,6 +132,14 @@ struct Scene {
     glm::vec3                car_aabb_max = glm::vec3(0.0f);
     bool                     loaded   = false;
 
+    // Per-mesh CPU-side metadata (parallel to scene_.meshes).
+    // mesh_offsets[m] = base offset into cull_mesh_buckets_buffer for mesh m.
+    // mesh_object_count[m] = total objects referencing mesh m (max instances).
+    // Both are computed at load time and used by the draw loop to bind the
+    // per-instance vertex buffer at the correct offset/size.
+    std::vector<uint32_t>    mesh_offsets;
+    std::vector<uint32_t>    mesh_object_count;
+
     // GpuContext-owned resources for textures. Kept here for lifetime
     // management with the scene.
     WGPUSampler              default_sampler = nullptr;   // linear/linear/repeat
