@@ -1779,6 +1779,79 @@ static WGPUComputePipeline make_indirect_build_pipeline(
     return pipe;
 }
 
+// Compute 4 light-space view-proj matrices, one per cascade.
+// Uses standard CSM: split camera frustum by depth ratios, fit an ortho
+// projection around each slice's world-space corners, snapped to texel grid.
+static void compute_csm_matrices(
+    const glm::mat4& view, const glm::mat4& proj,
+    float near_plane, float far_plane,
+    const glm::vec3& light_dir,
+    float shadow_map_size,
+    glm::mat4 out[4])
+{
+    // Cascade split ratios (log-ish spacing is standard; linear is fine here).
+    const float splits[5] = { 0.0f, 0.05f, 0.15f, 0.5f, 1.0f };
+
+    // Camera frustum corners in world space, computed from inverse(view*proj).
+    glm::mat4 inv_vp = glm::inverse(proj * view);
+    glm::vec4 ndc_corners[8] = {
+        {-1,-1,0,1}, { 1,-1,0,1}, { 1, 1,0,1}, {-1, 1,0,1},  // near
+        {-1,-1,1,1}, { 1,-1,1,1}, { 1, 1,1,1}, {-1, 1,1,1},  // far
+    };
+    glm::vec3 world_near[4], world_far[4];
+    for (int i = 0; i < 4; ++i) {
+        glm::vec4 p_n = inv_vp * ndc_corners[i];
+        glm::vec4 p_f = inv_vp * ndc_corners[i + 4];
+        world_near[i] = glm::vec3(p_n / p_n.w);
+        world_far[i]  = glm::vec3(p_f / p_f.w);
+    }
+
+    // Ortho view from light looking toward scene. Use a fixed up vector
+    // unless light is nearly vertical.
+    glm::vec3 up = glm::vec3(0, 1, 0);
+    if (std::abs(glm::dot(light_dir, up)) > 0.99f) up = glm::vec3(1, 0, 0);
+
+    for (int c = 0; c < 4; ++c) {
+        // Interpolate near/far corners for this cascade's slice.
+        glm::vec3 nf[4], ff[4];
+        for (int i = 0; i < 4; ++i) {
+            glm::vec3 cam_pos = glm::vec3(glm::inverse(view)[3]);
+            nf[i] = cam_pos + (world_near[i] - cam_pos) * splits[c];
+            ff[i] = cam_pos + (world_far[i]  - cam_pos) * splits[c + 1];
+        }
+        glm::vec3 center = glm::vec3(0.0f);
+        for (int i = 0; i < 4; ++i) { center += nf[i] + ff[i]; }
+        center /= 8.0f;
+
+        // Cascade radius = max distance from center to any corner.
+        float radius = 0.0f;
+        for (int i = 0; i < 4; ++i) {
+            radius = std::max(radius, glm::length(nf[i] - center));
+            radius = std::max(radius, glm::length(ff[i] - center));
+        }
+
+        // Light-space view: look from center - light_dir * radius*2 toward center.
+        glm::vec3 eye = center - light_dir * radius * 2.0f;
+        glm::mat4 light_view = glm::lookAt(eye, center, up);
+
+        // Ortho projection covering the cascade.
+        glm::mat4 light_proj = glm::ortho(-radius, radius, -radius, radius,
+                                          -radius * 4.0f, radius * 4.0f);
+
+        glm::mat4 lvp = light_proj * light_view;
+
+        // Snap translation to texel grid for stable shadows.
+        glm::vec4 origin = lvp * glm::vec4(0, 0, 0, 1);
+        origin *= shadow_map_size / 2.0f;
+        glm::vec4 rounded = glm::round(origin);
+        glm::vec4 offset = (rounded - origin) * 2.0f / shadow_map_size;
+        lvp[3][0] += offset.x;
+        lvp[3][1] += offset.y;
+
+        out[c] = lvp;
+    }
+}
+
 void Engine::begin_frame() {
     if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
@@ -2018,6 +2091,92 @@ void Engine::begin_frame() {
     }
 
     fg_.reset_passes();
+
+    // ---- CSM shadow pass: 4 cascades, depth-only ----
+    // Computed once per frame from the camera view-proj. Uses the same
+    // per-instance bucket buffer as the geometry pass (visible objects).
+    if (scene_.loaded && shadow_uniform_bgl_) {
+        // Compute cascade matrices (light-space view-proj per cascade).
+        const glm::vec3 light_dir = glm::normalize(glm::vec3(0.4f, 0.8f, 0.3f));
+        compute_csm_matrices(view, proj,
+                             scene_radius * 0.01f,
+                             std::max(100.0f, scene_radius * 20.0f),
+                             light_dir, 1024.0f,
+                             shadow_view_proj_);
+
+        fg_.add_pass("csm_shadows",
+            /*reads=*/  { r_depth },   // piggyback on depth resource for ordering
+            /*writes=*/ { },
+            [&](WGPUCommandEncoder enc) {
+                if (!shadow_pipeline_ready_ && shadow_uniform_bgl_) {
+                    shadow_pipeline_ = make_shadow_pipeline(gpu_.device, shadow_uniform_bgl_);
+                    if (shadow_pipeline_) shadow_pipeline_ready_ = true;
+                }
+                if (!shadow_pipeline_ready_) return;
+
+                uint32_t n_objects = (uint32_t)scene_.objects.size();
+                uint32_t n_meshes  = (uint32_t)scene_.meshes.size();
+
+                // For each cascade: upload the shadow uniform buffer, then
+                // render all objects into shadow_map layer `c`.
+                for (int c = 0; c < 4; ++c) {
+                    // Upload shadow uniform buffer for this cascade.
+                    struct ShadowU { glm::mat4 mvp; };
+                    std::vector<ShadowU> shadow_data(n_objects);
+                    for (uint32_t i = 0; i < n_objects; ++i) {
+                        shadow_data[i].mvp = shadow_view_proj_[c] * scene_.objects[i].transform;
+                    }
+                    wgpuQueueWriteBuffer(gpu_.queue, gpu_.shadow_uniform_buffer, 0,
+                                         shadow_data.data(), shadow_data.size() * sizeof(ShadowU));
+
+                    // Create a view for this cascade's layer.
+                    WGPUTextureViewDescriptor vd = {};
+                    vd.format          = WGPUTextureFormat_Depth32Float;
+                    vd.dimension       = WGPUTextureViewDimension_2D;
+                    vd.baseMipLevel    = 0;
+                    vd.mipLevelCount   = 1;
+                    vd.baseArrayLayer  = c;
+                    vd.arrayLayerCount = 1;
+                    vd.aspect          = WGPUTextureAspect_DepthOnly;
+                    WGPUTextureView layer_view = wgpuTextureCreateView(gpu_.shadow_map, &vd);
+
+                    WGPURenderPassDepthStencilAttachment dep = {};
+                    dep.view            = layer_view;
+                    dep.depthLoadOp     = WGPULoadOp_Clear;
+                    dep.depthStoreOp    = WGPUStoreOp_Store;
+                    dep.depthClearValue = 1.0f;
+                    dep.depthReadOnly   = false;
+
+                    WGPURenderPassDescriptor rp_desc = {};
+                    rp_desc.colorAttachmentCount   = 0;
+                    rp_desc.colorAttachments       = nullptr;
+                    rp_desc.depthStencilAttachment = &dep;
+
+                    WGPURenderPassEncoder shadow_rp = wgpuCommandEncoderBeginRenderPass(enc, &rp_desc);
+                    wgpuRenderPassEncoderSetPipeline(shadow_rp, shadow_pipeline_);
+                    wgpuRenderPassEncoderSetBindGroup(shadow_rp, 0, shadow_uniform_bg_, 0, nullptr);
+
+                    // Draw all visible objects via indirect.
+                    for (uint32_t m = 0; m < n_meshes; ++m) {
+                        const auto& mesh = scene_.meshes[m];
+                        wgpuRenderPassEncoderSetVertexBuffer(shadow_rp, 0, mesh.vertex_buffer, 0,
+                            mesh.vertex_count * 48);
+                        wgpuRenderPassEncoderSetVertexBuffer(shadow_rp, 1,
+                            gpu_.cull_mesh_buckets_buffer,
+                            (uint64_t)scene_.mesh_offsets[m] * 4ull,
+                            (uint64_t)scene_.mesh_object_count[m] * 4ull);
+                        wgpuRenderPassEncoderSetIndexBuffer(shadow_rp, mesh.index_buffer,
+                            WGPUIndexFormat_Uint32, 0, mesh.index_count * 4);
+                        wgpuRenderPassEncoderDrawIndexedIndirect(shadow_rp,
+                            gpu_.cull_indirect_args_buffer,
+                            (uint64_t)m * 20ull);
+                    }
+                    wgpuRenderPassEncoderEnd(shadow_rp);
+                    wgpuRenderPassEncoderRelease(shadow_rp);
+                    wgpuTextureViewRelease(layer_view);
+                }
+            });
+    }
 
     // ---- Geometry pass: writes G-buffer + depth ----
     fg_.add_pass("geometry",

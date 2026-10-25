@@ -212,6 +212,10 @@ private:
     WGPUBindGroupLayout shadow_uniform_bgl_    = nullptr;
     WGPUBindGroup       shadow_uniform_bg_     = nullptr;
 
+    // Shadow cascade matrices, computed per frame (light-space view-proj
+    // per cascade, snapped to texel grid for stability).
+    glm::mat4           shadow_view_proj_[4]   = {};
+
     // Composite pipeline (reads G-buffer, writes final color).
     WGPURenderPipeline  composite_pipeline_ = nullptr;
     bool                composite_pipeline_ready_ = false;
