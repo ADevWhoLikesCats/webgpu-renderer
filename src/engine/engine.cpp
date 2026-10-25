@@ -30,6 +30,7 @@ void GpuContext::destroy() {
     if (cull_indices_buffer) { wgpuBufferRelease(cull_indices_buffer); cull_indices_buffer = nullptr; }
     if (cull_mesh_ids_buffer)    { wgpuBufferRelease(cull_mesh_ids_buffer);    cull_mesh_ids_buffer    = nullptr; }
     if (cull_mesh_counts_buffer) { wgpuBufferRelease(cull_mesh_counts_buffer); cull_mesh_counts_buffer = nullptr; }
+    if (shadow_uniform_buffer)   { wgpuBufferRelease(shadow_uniform_buffer);   shadow_uniform_buffer   = nullptr; }
     if (cull_mesh_offsets_buffer){ wgpuBufferRelease(cull_mesh_offsets_buffer);cull_mesh_offsets_buffer= nullptr; }
     if (cull_mesh_buckets_buffer){ wgpuBufferRelease(cull_mesh_buckets_buffer);cull_mesh_buckets_buffer= nullptr; }
     if (cull_indirect_args_buffer){ wgpuBufferRelease(cull_indirect_args_buffer);cull_indirect_args_buffer= nullptr; }
@@ -70,6 +71,10 @@ void Engine::shutdown() {
     if (indirect_build_bgl_)      { wgpuBindGroupLayoutRelease(indirect_build_bgl_);          indirect_build_bgl_      = nullptr; }
     if (indirect_build_pipeline_) { wgpuComputePipelineRelease(indirect_build_pipeline_);     indirect_build_pipeline_ = nullptr; }
     indirect_build_ready_ = false;
+    if (shadow_uniform_bg_)  { wgpuBindGroupRelease(shadow_uniform_bg_);          shadow_uniform_bg_  = nullptr; }
+    if (shadow_uniform_bgl_) { wgpuBindGroupLayoutRelease(shadow_uniform_bgl_);   shadow_uniform_bgl_ = nullptr; }
+    if (shadow_pipeline_)    { wgpuRenderPipelineRelease(shadow_pipeline_);       shadow_pipeline_    = nullptr; }
+    shadow_pipeline_ready_ = false;
 
     // HZB resources (previously leaked)
     if (hzb_convert_bg_) { wgpuBindGroupRelease(hzb_convert_bg_); hzb_convert_bg_ = nullptr; }
@@ -568,6 +573,57 @@ bool Engine::init(const char* app_name,
 
         std::fprintf(stderr,
             "[engine] CSM shadow map created (1024x1024x4 Depth32Float) + comparison sampler\n");
+    }
+
+    // ---- Shadow uniform buffer + BGL + bind group ----
+    {
+        // One mat4 per object per frame, overwritten per cascade.
+        gpu_.shadow_uniform_capacity = 8192;
+
+        WGPUBufferDescriptor bd = {};
+        bd.size  = (uint64_t)gpu_.shadow_uniform_capacity * 64ull;
+        bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+        gpu_.shadow_uniform_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        if (!gpu_.shadow_uniform_buffer) {
+            err = "shadow uniform buffer creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupLayoutEntry entry = {};
+        entry.binding    = 0;
+        entry.visibility = WGPUShaderStage_Vertex;
+        entry.buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+        entry.buffer.hasDynamicOffset = false;
+        entry.buffer.minBindingSize = 0;
+
+        WGPUBindGroupLayoutDescriptor bgl = {};
+        bgl.entryCount = 1;
+        bgl.entries = &entry;
+        shadow_uniform_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
+        if (!shadow_uniform_bgl_) {
+            err = "shadow uniform BGL creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupEntry be = {};
+        be.binding = 0;
+        be.buffer  = gpu_.shadow_uniform_buffer;
+        be.offset  = 0;
+        be.size    = (uint64_t)gpu_.shadow_uniform_capacity * 64ull;
+
+        WGPUBindGroupDescriptor bgd = {};
+        bgd.layout     = shadow_uniform_bgl_;
+        bgd.entryCount = 1;
+        bgd.entries    = &be;
+        shadow_uniform_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+        if (!shadow_uniform_bg_) {
+            err = "shadow uniform bind group creation failed";
+            shutdown();
+            return false;
+        }
+        std::fprintf(stderr, "[engine] shadow uniform buffer + bind group ready\n");
     }
 
     // ---- Material binding group layout (group 1) ----
@@ -1177,6 +1233,111 @@ static WGPURenderPipeline make_geometry_pipeline(
     wgpuPipelineLayoutRelease(pl);
     wgpuShaderModuleRelease(mod);
     std::fprintf(stderr, "[engine] geometry pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
+static WGPURenderPipeline make_shadow_pipeline(
+    WGPUDevice device, WGPUBindGroupLayout shadow_bgl)
+{
+    // Depth-only shadow pass. One entry point (vs_main) reads from a shadow
+    // uniform buffer that is overwritten per cascade, so 4 shadow render
+    // passes per frame all use the same pipeline. No fragment stage.
+    const char* wgsl = R"(
+        struct ShadowUniforms {
+            mvp : mat4x4<f32>,
+        };
+
+        @group(0) @binding(0) var<storage, read> shadow_arr : array<ShadowUniforms, 8192>;
+
+        struct VSIn {
+            @location(0) pos     : vec3<f32>,
+            @location(1) normal  : vec3<f32>,
+            @location(2) uv      : vec2<f32>,
+            @location(3) tangent : vec4<f32>,
+            @location(4) obj_idx : u32,
+        };
+
+        @vertex
+        fn vs_main(in : VSIn) -> @builtin(position) vec4<f32> {
+            return shadow_arr[in.obj_idx].mvp * vec4<f32>(in.pos, 1.0);
+        }
+    )";
+
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code.data   = wgsl;
+    src.code.length = strlen(wgsl);
+
+    WGPUShaderModuleDescriptor smd = {};
+    smd.nextInChain = &src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) { std::fprintf(stderr, "[engine] shadow shader failed\n"); return nullptr; }
+
+    // Vertex layout: same as geometry (slot 0 = 48-byte vertex, slot 1 = 4-byte instance)
+    WGPUVertexAttribute vert_attrs[4] = {};
+    vert_attrs[0].format = WGPUVertexFormat_Float32x3; vert_attrs[0].offset = 0;  vert_attrs[0].shaderLocation = 0;
+    vert_attrs[1].format = WGPUVertexFormat_Float32x3; vert_attrs[1].offset = 12; vert_attrs[1].shaderLocation = 1;
+    vert_attrs[2].format = WGPUVertexFormat_Float32x2; vert_attrs[2].offset = 24; vert_attrs[2].shaderLocation = 2;
+    vert_attrs[3].format = WGPUVertexFormat_Float32x4; vert_attrs[3].offset = 32; vert_attrs[3].shaderLocation = 3;
+    WGPUVertexBufferLayout vbl_vert = {};
+    vbl_vert.stepMode = WGPUVertexStepMode_Vertex;
+    vbl_vert.arrayStride = 48;
+    vbl_vert.attributeCount = 4;
+    vbl_vert.attributes = vert_attrs;
+
+    WGPUVertexAttribute inst_attr = {};
+    inst_attr.format = WGPUVertexFormat_Uint32;
+    inst_attr.offset = 0;
+    inst_attr.shaderLocation = 4;
+    WGPUVertexBufferLayout vbl_inst = {};
+    vbl_inst.stepMode = WGPUVertexStepMode_Instance;
+    vbl_inst.arrayStride = 4;
+    vbl_inst.attributeCount = 1;
+    vbl_inst.attributes = &inst_attr;
+
+    WGPUVertexBufferLayout vbls[2] = { vbl_vert, vbl_inst };
+
+    WGPUVertexState vs = {};
+    vs.module = mod;
+    vs.entryPoint.data = "vs_main";
+    vs.entryPoint.length = 7;
+    vs.bufferCount = 2;
+    vs.buffers = vbls;
+
+    WGPUPrimitiveState prim = {};
+    prim.topology  = WGPUPrimitiveTopology_TriangleList;
+    prim.frontFace = WGPUFrontFace_CCW;
+    prim.cullMode  = WGPUCullMode_None;
+
+    WGPUMultisampleState ms = {};
+    ms.count = 1;
+    ms.mask  = 0xFFFFFFFF;
+
+    WGPUDepthStencilState ds = {};
+    ds.format            = WGPUTextureFormat_Depth32Float;
+    ds.depthWriteEnabled = WGPUOptionalBool_True;
+    ds.depthCompare      = WGPUCompareFunction_Less;
+    ds.stencilFront.compare = WGPUCompareFunction_Always;
+    ds.stencilBack.compare  = WGPUCompareFunction_Always;
+
+    WGPUPipelineLayoutDescriptor pl_desc = {};
+    pl_desc.bindGroupLayoutCount = 1;
+    pl_desc.bindGroupLayouts     = &shadow_bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
+    if (!pl) { std::fprintf(stderr, "[engine] shadow pipeline layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
+
+    WGPURenderPipelineDescriptor pd = {};
+    pd.layout       = pl;
+    pd.vertex       = vs;
+    pd.primitive    = prim;
+    pd.multisample  = ms;
+    pd.fragment     = nullptr;  // depth-only, no fragment stage
+    pd.depthStencil = &ds;
+
+    WGPURenderPipeline pipe = wgpuDeviceCreateRenderPipeline(device, &pd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] shadow pipeline: %p\n", (void*)pipe);
     return pipe;
 }
 

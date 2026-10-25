@@ -50,6 +50,11 @@ struct GpuContext {
     WGPUTextureView  shadow_view  = nullptr;
     WGPUSampler      shadow_sampler = nullptr;
 
+    // Shadow-pass uniform buffer: one mat4 (mvp) per object, overwritten
+    // per cascade (4 uploads per frame, one per cascade).
+    WGPUBuffer       shadow_uniform_buffer = nullptr;
+    uint32_t         shadow_uniform_capacity = 0;  // in objects
+
     // HZB (Hi-Z) depth pyramid. Mip 0 = converted depth buffer (R32Float),
     // mips 1..N = hierarchically downsampled minimum. Used by SSR/SSAO/SSGI.
     WGPUTexture     hzb_texture = nullptr;
@@ -200,6 +205,12 @@ private:
     // Geometry pipeline (writes G-buffer).
     WGPURenderPipeline geometry_pipeline_ = nullptr;
     bool               geometry_pipeline_ready_ = false;
+
+    // CSM shadow pipeline (depth-only, reads from shadow_uniform_buffer).
+    WGPURenderPipeline  shadow_pipeline_       = nullptr;
+    bool                shadow_pipeline_ready_ = false;
+    WGPUBindGroupLayout shadow_uniform_bgl_    = nullptr;
+    WGPUBindGroup       shadow_uniform_bg_     = nullptr;
 
     // Composite pipeline (reads G-buffer, writes final color).
     WGPURenderPipeline  composite_pipeline_ = nullptr;
