@@ -28,6 +28,8 @@ void GpuContext::destroy() {
     if (cull_params_buffer)  { wgpuBufferRelease(cull_params_buffer);  cull_params_buffer  = nullptr; }
     if (cull_output_buffer)  { wgpuBufferRelease(cull_output_buffer);  cull_output_buffer  = nullptr; }
     if (cull_indices_buffer) { wgpuBufferRelease(cull_indices_buffer); cull_indices_buffer = nullptr; }
+    if (cull_mesh_ids_buffer)    { wgpuBufferRelease(cull_mesh_ids_buffer);    cull_mesh_ids_buffer    = nullptr; }
+    if (cull_mesh_counts_buffer) { wgpuBufferRelease(cull_mesh_counts_buffer); cull_mesh_counts_buffer = nullptr; }
 }
 
 Engine::~Engine() { shutdown(); }
@@ -347,14 +349,31 @@ bool Engine::init(const char* app_name,
             gpu_.cull_indices_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         }
 
+        // Per-object mesh id buffer (uploaded at load).
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = (uint64_t)gpu_.cull_aabb_capacity * 4ull;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            gpu_.cull_mesh_ids_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        }
+        // Per-mesh counts (cleared each frame, incremented by compute).
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = 65536;  // 16384 meshes * 4 bytes; cap for future
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc;
+            gpu_.cull_mesh_counts_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+            gpu_.cull_mesh_capacity = 16384;
+        }
+
         if (!gpu_.cull_aabb_buffer || !gpu_.cull_params_buffer ||
-            !gpu_.cull_output_buffer || !gpu_.cull_indices_buffer) {
+            !gpu_.cull_output_buffer || !gpu_.cull_indices_buffer ||
+            !gpu_.cull_mesh_ids_buffer || !gpu_.cull_mesh_counts_buffer) {
             err = "cull buffer creation failed";
             shutdown();
             return false;
         }
 
-        WGPUBindGroupLayoutEntry e[4] = {};
+        WGPUBindGroupLayoutEntry e[6] = {};
         e[0].binding = 0; e[0].visibility = WGPUShaderStage_Compute;
         e[0].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
         e[1].binding = 1; e[1].visibility = WGPUShaderStage_Compute;
@@ -363,9 +382,13 @@ bool Engine::init(const char* app_name,
         e[2].buffer.type = WGPUBufferBindingType_Storage;
         e[3].binding = 3; e[3].visibility = WGPUShaderStage_Compute;
         e[3].buffer.type = WGPUBufferBindingType_Storage;
+        e[4].binding = 4; e[4].visibility = WGPUShaderStage_Compute;
+        e[4].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+        e[5].binding = 5; e[5].visibility = WGPUShaderStage_Compute;
+        e[5].buffer.type = WGPUBufferBindingType_Storage;
 
         WGPUBindGroupLayoutDescriptor bgl_desc = {};
-        bgl_desc.entryCount = 4;
+        bgl_desc.entryCount = 6;
         bgl_desc.entries    = e;
         cull_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl_desc);
         if (!cull_bgl_) {
@@ -1326,10 +1349,12 @@ static WGPUComputePipeline make_cull_pipeline(
             _pad2         : u32,
         };
 
-        @group(0) @binding(0) var<storage, read>       aabbs   : array<Aabb>;
-        @group(0) @binding(1) var<storage, read>       params  : Params;
-        @group(0) @binding(2) var<storage, read_write> out_cnt : array<atomic<u32>, 1>;
-        @group(0) @binding(3) var<storage, read_write> out_idx : array<u32>;
+        @group(0) @binding(0) var<storage, read>       aabbs     : array<Aabb>;
+        @group(0) @binding(1) var<storage, read>       params    : Params;
+        @group(0) @binding(2) var<storage, read_write> out_cnt   : array<atomic<u32>, 1>;
+        @group(0) @binding(3) var<storage, read_write> out_idx   : array<u32>;
+        @group(0) @binding(4) var<storage, read>       mesh_ids  : array<u32>;
+        @group(0) @binding(5) var<storage, read_write> mesh_cnts : array<atomic<u32>>;
 
         fn extract_planes(m: mat4x4<f32>) -> array<vec4<f32>, 6> {
             let r0 = vec4<f32>(m[0][0], m[1][0], m[2][0], m[3][0]);
@@ -1367,6 +1392,10 @@ static WGPUComputePipeline make_cull_pipeline(
             if (aabb_visible(planes, a.min_xyz, a.max_xyz)) {
                 let slot = atomicAdd(&out_cnt[0], 1u);
                 out_idx[slot] = gid.x;
+                let mesh_id = mesh_ids[gid.x];
+                if (mesh_id < arrayLength(&mesh_cnts)) {
+                    atomicAdd(&mesh_cnts[mesh_id], 1u);
+                }
             }
         }
     )";
@@ -1490,7 +1519,7 @@ void Engine::begin_frame() {
         if (!cull_ready_) {
             cull_pipeline_ = make_cull_pipeline(gpu_.device, cull_bgl_);
             if (cull_pipeline_) {
-                WGPUBindGroupEntry be[4] = {};
+                WGPUBindGroupEntry be[6] = {};
                 be[0].binding = 0;
                 be[0].buffer  = gpu_.cull_aabb_buffer;
                 be[0].size    = (uint64_t)gpu_.cull_aabb_capacity * 32ull;
@@ -1503,10 +1532,16 @@ void Engine::begin_frame() {
                 be[3].binding = 3;
                 be[3].buffer  = gpu_.cull_indices_buffer;
                 be[3].size    = (uint64_t)gpu_.cull_indices_capacity * 4ull;
+                be[4].binding = 4;
+                be[4].buffer  = gpu_.cull_mesh_ids_buffer;
+                be[4].size    = (uint64_t)gpu_.cull_aabb_capacity * 4ull;
+                be[5].binding = 5;
+                be[5].buffer  = gpu_.cull_mesh_counts_buffer;
+                be[5].size    = (uint64_t)gpu_.cull_mesh_capacity * 4ull;
 
                 WGPUBindGroupDescriptor bgd = {};
                 bgd.layout     = cull_bgl_;
-                bgd.entryCount = 4;
+                bgd.entryCount = 6;
                 bgd.entries    = be;
                 cull_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
                 if (cull_bg_) cull_ready_ = true;
@@ -1516,6 +1551,12 @@ void Engine::begin_frame() {
             // Clear the atomic counter.
             uint32_t zero = 0;
             wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_output_buffer, 0, &zero, 4);
+            // Clear per-mesh counts (whole buffer to zero).
+            if (gpu_.cull_mesh_counts_buffer) {
+                std::vector<uint32_t> zeros(gpu_.cull_mesh_capacity, 0);
+                wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_mesh_counts_buffer, 0,
+                                     zeros.data(), zeros.size() * 4);
+            }
             // Upload params: mat4 mvp_proj_view + u32 object_count + pad.
             struct CullParams {
                 glm::mat4 mvp_proj_view;
@@ -1581,6 +1622,73 @@ void Engine::begin_frame() {
                 wgpuBufferUnmap(readback);
             }
             wgpuBufferRelease(readback);
+
+            // 3c-1a: readback per-mesh counts, verify against CPU.
+            {
+                static bool done_mesh_verify = false;
+                if (!done_mesh_verify) {
+                    uint64_t n_meshes = scene_.meshes.size();
+                    WGPUBufferDescriptor bd_mesh = {};
+                    bd_mesh.size  = n_meshes * 4;
+                    bd_mesh.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+                    WGPUBuffer mesh_rb = wgpuDeviceCreateBuffer(gpu_.device, &bd_mesh);
+
+                    WGPUCommandEncoder enc2 = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
+                    wgpuCommandEncoderCopyBufferToBuffer(enc2,
+                        gpu_.cull_mesh_counts_buffer, 0, mesh_rb, 0, n_meshes * 4);
+                    WGPUCommandBuffer cmd2 = wgpuCommandEncoderFinish(enc2, nullptr);
+                    wgpuQueueSubmit(gpu_.queue, 1, &cmd2);
+                    wgpuCommandBufferRelease(cmd2);
+                    wgpuCommandEncoderRelease(enc2);
+
+                    struct MapState2 { bool done = false; bool ok = false; } ms2;
+                    WGPUBufferMapCallbackInfo mcb2 = {};
+                    mcb2.mode = WGPUCallbackMode_AllowSpontaneous;
+                    mcb2.callback = [](WGPUMapAsyncStatus st, WGPUStringView, void* u1, void*) {
+                        auto* m = static_cast<MapState2*>(u1);
+                        m->done = true; m->ok = (st == WGPUMapAsyncStatus_Success);
+                    };
+                    mcb2.userdata1 = &ms2;
+                    wgpuBufferMapAsync(mesh_rb, WGPUMapMode_Read, 0, n_meshes * 4, mcb2);
+                    int waited2 = 0;
+                    while (!ms2.done && waited2 < 200) {
+                        wgpuInstanceProcessEvents(gpu_.instance);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        waited2++;
+                    }
+                    if (ms2.ok) {
+                        const uint32_t* gpu_mesh = (const uint32_t*)
+                            wgpuBufferGetConstMappedRange(mesh_rb, 0, n_meshes * 4);
+                        // CPU-side expected per-mesh count. Compute a fresh
+                        // CPU cull with the same frustum the GPU saw.
+                        Frustum6 cpu_frustum = extract_frustum(mvp_proj_view);
+                        std::vector<uint32_t> cpu_mesh(n_meshes, 0);
+                        for (uint32_t i = 0; i < (uint32_t)scene_.objects.size(); ++i) {
+                            const auto& obj  = scene_.objects[i];
+                            const auto& mesh = scene_.meshes[obj.mesh_index];
+                            glm::vec3 wmin, wmax;
+                            transform_aabb(mesh.aabb_min, mesh.aabb_max, obj.transform, wmin, wmax);
+                            if (frustum_test_aabb(cpu_frustum, wmin, wmax)) {
+                                cpu_mesh[obj.mesh_index]++;
+                            }
+                        }
+                        uint64_t matches = 0;
+                        uint64_t diffs = 0;
+                        for (uint64_t i = 0; i < n_meshes; ++i) {
+                            if (gpu_mesh[i] == cpu_mesh[i]) matches++;
+                            else diffs++;
+                        }
+                        std::fprintf(stderr,
+                            "[engine] per-mesh counts: %llu / %llu match (%llu differ)\n",
+                            (unsigned long long)matches,
+                            (unsigned long long)n_meshes,
+                            (unsigned long long)diffs);
+                        wgpuBufferUnmap(mesh_rb);
+                        done_mesh_verify = true;
+                    }
+                    wgpuBufferRelease(mesh_rb);
+                }
+            }
         }
     }
 
@@ -2446,6 +2554,18 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
                                  buf.data(), buf.size() * sizeof(AabbPadded));
             std::fprintf(stderr,
                 "[engine] cull AABB buffer: %u objects uploaded\n", n);
+
+            // Fill mesh_id buffer: per-object mesh index.
+            if (gpu_.cull_mesh_ids_buffer) {
+                std::vector<uint32_t> mesh_ids(n);
+                for (uint32_t i = 0; i < n; ++i) {
+                    mesh_ids[i] = scene_.objects[i].mesh_index;
+                }
+                wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_mesh_ids_buffer, 0,
+                                     mesh_ids.data(), mesh_ids.size() * 4);
+                std::fprintf(stderr,
+                    "[engine] cull mesh_id buffer: %u entries uploaded\n", n);
+            }
         }
     }
 

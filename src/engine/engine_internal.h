@@ -67,8 +67,11 @@ struct GpuContext {
     WGPUBuffer cull_params_buffer  = nullptr;
     WGPUBuffer cull_output_buffer  = nullptr;
     WGPUBuffer cull_indices_buffer = nullptr;
+    WGPUBuffer cull_mesh_ids_buffer = nullptr;     // per-object mesh index, 4 bytes each
+    WGPUBuffer cull_mesh_counts_buffer = nullptr;  // per-mesh atomic count, 4 bytes each
     uint32_t   cull_aabb_capacity  = 0;   // in objects (aabb buffer size / 32)
     uint32_t   cull_indices_capacity = 0; // in objects
+    uint32_t   cull_mesh_capacity = 0;    // in meshes
 
     // Geometry.
     WGPUBuffer vertex_buffer = nullptr;
