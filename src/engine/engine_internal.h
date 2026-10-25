@@ -215,6 +215,13 @@ private:
     // Shadow cascade matrices, computed per frame (light-space view-proj
     // per cascade, snapped to texel grid for stability).
     glm::mat4           shadow_view_proj_[4]   = {};
+    // Cascade split ratios (near/far of the camera frustum that each cascade covers).
+    // Computed once, uploaded to composite.
+
+    // Composite shadow bind group (group 2): depth + shadow map + sampler + extra uniforms.
+    WGPUBindGroupLayout composite_shadow_bgl_ = nullptr;
+    WGPUBindGroup       composite_shadow_bg_  = nullptr;
+    WGPUBuffer          composite_extra_buffer_ = nullptr;
 
     // Composite pipeline (reads G-buffer, writes final color).
     WGPURenderPipeline  composite_pipeline_ = nullptr;

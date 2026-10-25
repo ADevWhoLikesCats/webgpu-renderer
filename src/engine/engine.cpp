@@ -75,6 +75,9 @@ void Engine::shutdown() {
     if (shadow_uniform_bgl_) { wgpuBindGroupLayoutRelease(shadow_uniform_bgl_);   shadow_uniform_bgl_ = nullptr; }
     if (shadow_pipeline_)    { wgpuRenderPipelineRelease(shadow_pipeline_);       shadow_pipeline_    = nullptr; }
     shadow_pipeline_ready_ = false;
+    if (composite_shadow_bg_)  { wgpuBindGroupRelease(composite_shadow_bg_);       composite_shadow_bg_  = nullptr; }
+    if (composite_shadow_bgl_) { wgpuBindGroupLayoutRelease(composite_shadow_bgl_); composite_shadow_bgl_ = nullptr; }
+    if (composite_extra_buffer_) { wgpuBufferRelease(composite_extra_buffer_); composite_extra_buffer_ = nullptr; }
 
     // HZB resources (previously leaked)
     if (hzb_convert_bg_) { wgpuBindGroupRelease(hzb_convert_bg_); hzb_convert_bg_ = nullptr; }
@@ -624,6 +627,75 @@ bool Engine::init(const char* app_name,
             return false;
         }
         std::fprintf(stderr, "[engine] shadow uniform buffer + bind group ready\n");
+    }
+
+    // ---- Composite shadow bind group (group 2 in composite pipeline) ----
+    // Bindings:
+    //   0: depth texture (depth32float, 2D)
+    //   1: shadow map (depth32float, 2D array)
+    //   2: comparison sampler
+    //   3: extra uniforms (inv_view_proj + shadow_view_proj[4] + cascade_splits[4])
+    {
+        WGPUBufferDescriptor bd = {};
+        bd.size  = 64 + 256 + 16;  // inv_vp (64) + shadow_vp[4] (256) + splits (16) = 336
+        bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        composite_extra_buffer_ = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+
+        WGPUBindGroupLayoutEntry e[4] = {};
+        e[0].binding = 0;
+        e[0].visibility = WGPUShaderStage_Fragment;
+        e[0].texture.sampleType = WGPUTextureSampleType_Depth;
+        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        e[1].binding = 1;
+        e[1].visibility = WGPUShaderStage_Fragment;
+        e[1].texture.sampleType = WGPUTextureSampleType_Depth;
+        e[1].texture.viewDimension = WGPUTextureViewDimension_2DArray;
+
+        e[2].binding = 2;
+        e[2].visibility = WGPUShaderStage_Fragment;
+        e[2].sampler.type = WGPUSamplerBindingType_Comparison;
+
+        e[3].binding = 3;
+        e[3].visibility = WGPUShaderStage_Fragment;
+        e[3].buffer.type = WGPUBufferBindingType_Uniform;
+        e[3].buffer.hasDynamicOffset = false;
+        e[3].buffer.minBindingSize = 336;
+
+        WGPUBindGroupLayoutDescriptor bgl = {};
+        bgl.entryCount = 4;
+        bgl.entries = e;
+        composite_shadow_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
+        if (!composite_shadow_bgl_) {
+            err = "composite shadow BGL creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupEntry be[4] = {};
+        be[0].binding = 0;
+        be[0].textureView = gpu_.depth_view;
+        be[1].binding = 1;
+        be[1].textureView = gpu_.shadow_view;
+        be[2].binding = 2;
+        be[2].sampler = gpu_.shadow_sampler;
+        be[3].binding = 3;
+        be[3].buffer = composite_extra_buffer_;
+        be[3].offset = 0;
+        be[3].size = 336;
+
+        WGPUBindGroupDescriptor bgd = {};
+        bgd.layout = composite_shadow_bgl_;
+        bgd.entryCount = 4;
+        bgd.entries = be;
+        composite_shadow_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+        if (!composite_shadow_bg_) {
+            err = "composite shadow bind group creation failed";
+            shutdown();
+            return false;
+        }
+
+        std::fprintf(stderr, "[engine] composite shadow bind group ready\n");
     }
 
     // ---- Material binding group layout (group 1) ----
@@ -1343,7 +1415,8 @@ static WGPURenderPipeline make_shadow_pipeline(
 
 static WGPURenderPipeline make_composite_pipeline(
     WGPUDevice device, WGPUTextureFormat color_format,
-    WGPUBindGroupLayout uniform_bgl, WGPUBindGroupLayout gbuf_bgl)
+    WGPUBindGroupLayout uniform_bgl, WGPUBindGroupLayout gbuf_bgl,
+    WGPUBindGroupLayout shadow_bgl)
 {
     const char* wgsl = R"(
         @group(1) @binding(0) var t_albedo   : texture_2d<f32>;
@@ -1507,9 +1580,9 @@ static WGPURenderPipeline make_composite_pipeline(
     ms.count = 1;
     ms.mask  = 0xFFFFFFFF;
 
-    WGPUBindGroupLayout layouts[2] = { uniform_bgl, gbuf_bgl };
+    WGPUBindGroupLayout layouts[3] = { uniform_bgl, gbuf_bgl, shadow_bgl };
     WGPUPipelineLayoutDescriptor pl_desc = {};
-    pl_desc.bindGroupLayoutCount = 2;
+    pl_desc.bindGroupLayoutCount = 3;
     pl_desc.bindGroupLayouts     = layouts;
     WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
     if (!pl) { std::fprintf(stderr, "[engine] composite layout failed\n"); wgpuShaderModuleRelease(mod); return nullptr; }
@@ -1864,7 +1937,8 @@ void Engine::begin_frame() {
     }
     if (!composite_pipeline_ready_ && composite_bgl_) {
         composite_pipeline_ = make_composite_pipeline(
-            gpu_.device, offscreen_format_, gpu_.uniform_bgl, composite_bgl_);
+            gpu_.device, offscreen_format_, gpu_.uniform_bgl, composite_bgl_,
+            composite_shadow_bgl_);
         composite_pipeline_ready_ = true;
         if (!composite_pipeline_) return;
     }
@@ -2331,6 +2405,7 @@ void Engine::begin_frame() {
             wgpuRenderPassEncoderSetPipeline(rp, composite_pipeline_);
             wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(rp, 1, composite_bg_, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(rp, 2, composite_shadow_bg_, 0, nullptr);
             wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(rp);
             wgpuRenderPassEncoderRelease(rp);
