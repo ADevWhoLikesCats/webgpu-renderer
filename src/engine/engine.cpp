@@ -1874,30 +1874,31 @@ void Engine::begin_frame() {
                     glm::vec4 material_color;
                     glm::vec4 material_params;
                 };
-                std::vector<uint8_t> uniform_data;
-                uniform_data.reserve((size_t)N * kStride);
+                // Write uniform data for ALL objects (not just visible).
+                // Uniform slot == object index. This aligns the GPU culler's
+                // output (object indices in mesh buckets) with the per-instance
+                // vertex buffer that the shader consumes.
+                std::vector<uint8_t> uniform_data((size_t)N * kStride, 0);
 
                 for (uint32_t i = 0; i < N; ++i) {
                     const auto& obj  = scene_.objects[i];
                     const auto& mesh = scene_.meshes[obj.mesh_index];
+                    const auto& mat  = scene_.materials[obj.material_index];
 
-                    glm::vec3 wmin, wmax;
-                    transform_aabb(mesh.aabb_min, mesh.aabb_max, obj.transform,
-                                   wmin, wmax);
-                    if (!frustum_test_aabb(frustum, wmin, wmax)) continue;
-
-                    visible.push_back(i);
-
-                    const auto& mat = scene_.materials[obj.material_index];
                     U u = {};
                     u.mvp    = mvp_proj_view * obj.transform;
                     u.model  = obj.transform;
                     u.material_color  = mat.base_color;
                     u.material_params = glm::vec4(mat.roughness, mat.metallic, mat.ao, 0.0f);
+                    std::memcpy(uniform_data.data() + (size_t)i * kStride, &u, sizeof(u));
 
-                    size_t prev = uniform_data.size();
-                    uniform_data.resize(prev + kStride);
-                    std::memcpy(uniform_data.data() + prev, &u, sizeof(u));
+                    // Cull for the CPU-side batching below (unchanged behavior).
+                    glm::vec3 wmin, wmax;
+                    transform_aabb(mesh.aabb_min, mesh.aabb_max, obj.transform,
+                                   wmin, wmax);
+                    if (frustum_test_aabb(frustum, wmin, wmax)) {
+                        visible.push_back(i);
+                    }
                 }
 
                 static uint32_t last_v = 0;
@@ -1938,13 +1939,6 @@ void Engine::begin_frame() {
                     uint32_t instance_count;
                 };
 
-                // Reverse map: object index -> uniform slot.
-                // Uniforms were packed in `visible` order (visible[k] at slot k).
-                std::vector<uint32_t> uniform_slot_of(scene_.objects.size(), 0);
-                for (uint32_t slot = 0; slot < (uint32_t)visible.size(); ++slot) {
-                    uniform_slot_of[visible[slot]] = slot;
-                }
-
                 // Sort visible objects by mesh index.
                 std::vector<uint32_t> visible_by_mesh = visible;
                 std::sort(visible_by_mesh.begin(), visible_by_mesh.end(),
@@ -1968,7 +1962,7 @@ void Engine::begin_frame() {
                         b.instance_count = 0;
                         batches.push_back(b);
                     }
-                    instance_slots.push_back(uniform_slot_of[obj_index]);
+                    instance_slots.push_back(obj_index);  // object index = uniform slot
                     batches.back().instance_count++;
                 }
 
