@@ -32,6 +32,8 @@ void GpuContext::destroy() {
     if (cull_mesh_counts_buffer) { wgpuBufferRelease(cull_mesh_counts_buffer); cull_mesh_counts_buffer = nullptr; }
     if (cull_mesh_offsets_buffer){ wgpuBufferRelease(cull_mesh_offsets_buffer);cull_mesh_offsets_buffer= nullptr; }
     if (cull_mesh_buckets_buffer){ wgpuBufferRelease(cull_mesh_buckets_buffer);cull_mesh_buckets_buffer= nullptr; }
+    if (cull_indirect_args_buffer){ wgpuBufferRelease(cull_indirect_args_buffer);cull_indirect_args_buffer= nullptr; }
+    if (cull_mesh_index_counts_buffer){ wgpuBufferRelease(cull_mesh_index_counts_buffer);cull_mesh_index_counts_buffer= nullptr; }
 }
 
 Engine::~Engine() { shutdown(); }
@@ -61,6 +63,10 @@ void Engine::shutdown() {
     if (cull_bgl_)      { wgpuBindGroupLayoutRelease(cull_bgl_);          cull_bgl_      = nullptr; }
     if (cull_pipeline_) { wgpuComputePipelineRelease(cull_pipeline_);     cull_pipeline_ = nullptr; }
     cull_ready_ = false;
+    if (indirect_build_bg_)       { wgpuBindGroupRelease(indirect_build_bg_);                  indirect_build_bg_       = nullptr; }
+    if (indirect_build_bgl_)      { wgpuBindGroupLayoutRelease(indirect_build_bgl_);          indirect_build_bgl_      = nullptr; }
+    if (indirect_build_pipeline_) { wgpuComputePipelineRelease(indirect_build_pipeline_);     indirect_build_pipeline_ = nullptr; }
+    indirect_build_ready_ = false;
 
     // HZB resources (previously leaked)
     if (hzb_convert_bg_) { wgpuBindGroupRelease(hzb_convert_bg_); hzb_convert_bg_ = nullptr; }
@@ -380,11 +386,27 @@ bool Engine::init(const char* app_name,
             bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc;
             gpu_.cull_mesh_buckets_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         }
+        // Indirect draw args, one 20-byte entry per mesh.
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = (uint64_t)gpu_.cull_mesh_capacity * 20ull;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_Indirect |
+                       WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc;
+            gpu_.cull_indirect_args_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        }
+        // Per-mesh index counts (uploaded at load).
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = (uint64_t)gpu_.cull_mesh_capacity * 4ull;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            gpu_.cull_mesh_index_counts_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        }
 
         if (!gpu_.cull_aabb_buffer || !gpu_.cull_params_buffer ||
             !gpu_.cull_output_buffer || !gpu_.cull_indices_buffer ||
             !gpu_.cull_mesh_ids_buffer || !gpu_.cull_mesh_counts_buffer ||
-            !gpu_.cull_mesh_offsets_buffer || !gpu_.cull_mesh_buckets_buffer) {
+            !gpu_.cull_mesh_offsets_buffer || !gpu_.cull_mesh_buckets_buffer ||
+            !gpu_.cull_indirect_args_buffer || !gpu_.cull_mesh_index_counts_buffer) {
             err = "cull buffer creation failed";
             shutdown();
             return false;
@@ -416,6 +438,30 @@ bool Engine::init(const char* app_name,
             err = "cull BGL creation failed";
             shutdown();
             return false;
+        }
+
+        // Indirect args builder BGL: mesh_counts, mesh_offsets,
+        // mesh_index_counts, indirect_args.
+        {
+            WGPUBindGroupLayoutEntry eb[4] = {};
+            eb[0].binding = 0; eb[0].visibility = WGPUShaderStage_Compute;
+            eb[0].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+            eb[1].binding = 1; eb[1].visibility = WGPUShaderStage_Compute;
+            eb[1].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+            eb[2].binding = 2; eb[2].visibility = WGPUShaderStage_Compute;
+            eb[2].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+            eb[3].binding = 3; eb[3].visibility = WGPUShaderStage_Compute;
+            eb[3].buffer.type = WGPUBufferBindingType_Storage;
+
+            WGPUBindGroupLayoutDescriptor bglb = {};
+            bglb.entryCount = 4;
+            bglb.entries    = eb;
+            indirect_build_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bglb);
+            if (!indirect_build_bgl_) {
+                err = "indirect build BGL creation failed";
+                shutdown();
+                return false;
+            }
         }
 
         std::fprintf(stderr, "[engine] cull buffers + BGL ready\n");
@@ -1453,6 +1499,62 @@ static WGPUComputePipeline make_cull_pipeline(
     return pipe;
 }
 
+static WGPUComputePipeline make_indirect_build_pipeline(
+    WGPUDevice device, WGPUBindGroupLayout bgl)
+{
+    const char* wgsl = R"(
+        @group(0) @binding(0) var<storage, read>       mesh_cnts : array<u32>;
+        @group(0) @binding(1) var<storage, read>       mesh_offs : array<u32>;
+        @group(0) @binding(2) var<storage, read>       mesh_idx  : array<u32>;
+        @group(0) @binding(3) var<storage, read_write> args      : array<u32>;
+
+        // Indirect args layout (20 bytes = 5 u32):
+        //   [0] index_count
+        //   [1] instance_count
+        //   [2] first_index
+        //   [3] base_vertex
+        //   [4] first_instance
+        @compute @workgroup_size(64, 1, 1)
+        fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
+            let m = gid.x;
+            if (m >= arrayLength(&mesh_cnts)) { return; }
+            let base = m * 5u;
+            args[base + 0u] = mesh_idx[m];
+            args[base + 1u] = mesh_cnts[m];
+            args[base + 2u] = 0u;
+            args[base + 3u] = 0u;
+            args[base + 4u] = mesh_offs[m];
+        }
+    )";
+
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code.data   = wgsl;
+    src.code.length = strlen(wgsl);
+
+    WGPUShaderModuleDescriptor smd = {};
+    smd.nextInChain = &src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) { std::fprintf(stderr, "[engine] indirect build shader failed\n"); return nullptr; }
+
+    WGPUPipelineLayoutDescriptor pld = {};
+    pld.bindGroupLayoutCount = 1;
+    pld.bindGroupLayouts     = &bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pld);
+
+    WGPUComputePipelineDescriptor cpd = {};
+    cpd.layout             = pl;
+    cpd.compute.module     = mod;
+    cpd.compute.entryPoint.data   = "cs_main";
+    cpd.compute.entryPoint.length = 7;
+
+    WGPUComputePipeline pipe = wgpuDeviceCreateComputePipeline(device, &cpd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] indirect build pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
 void Engine::begin_frame() {
     if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
@@ -1792,6 +1894,50 @@ void Engine::begin_frame() {
         }
     }
 
+
+    // ---- Indirect args build (3c-1c-2a) ----
+    if (scene_.loaded && indirect_build_bgl_ && gpu_.cull_indirect_args_buffer) {
+        if (!indirect_build_ready_) {
+            indirect_build_pipeline_ = make_indirect_build_pipeline(gpu_.device, indirect_build_bgl_);
+            if (indirect_build_pipeline_) {
+                WGPUBindGroupEntry be[4] = {};
+                be[0].binding = 0;
+                be[0].buffer  = gpu_.cull_mesh_counts_buffer;
+                be[0].size    = (uint64_t)gpu_.cull_mesh_capacity * 4ull;
+                be[1].binding = 1;
+                be[1].buffer  = gpu_.cull_mesh_offsets_buffer;
+                be[1].size    = (uint64_t)gpu_.cull_mesh_capacity * 4ull;
+                be[2].binding = 2;
+                be[2].buffer  = gpu_.cull_mesh_index_counts_buffer;
+                be[2].size    = (uint64_t)gpu_.cull_mesh_capacity * 4ull;
+                be[3].binding = 3;
+                be[3].buffer  = gpu_.cull_indirect_args_buffer;
+                be[3].size    = (uint64_t)gpu_.cull_mesh_capacity * 20ull;
+
+                WGPUBindGroupDescriptor bgd = {};
+                bgd.layout     = indirect_build_bgl_;
+                bgd.entryCount = 4;
+                bgd.entries    = be;
+                indirect_build_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+                if (indirect_build_bg_) indirect_build_ready_ = true;
+            }
+        }
+        if (indirect_build_ready_) {
+            WGPUCommandEncoder ind_enc = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
+            WGPUComputePassDescriptor cpd = {};
+            WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(ind_enc, &cpd);
+            wgpuComputePassEncoderSetPipeline(cp, indirect_build_pipeline_);
+            wgpuComputePassEncoderSetBindGroup(cp, 0, indirect_build_bg_, 0, nullptr);
+            uint32_t n_meshes = (uint32_t)scene_.meshes.size();
+            wgpuComputePassEncoderDispatchWorkgroups(cp, (n_meshes + 63) / 64, 1, 1);
+            wgpuComputePassEncoderEnd(cp);
+            wgpuComputePassEncoderRelease(cp);
+            WGPUCommandBuffer ind_cmd = wgpuCommandEncoderFinish(ind_enc, nullptr);
+            wgpuQueueSubmit(gpu_.queue, 1, &ind_cmd);
+            wgpuCommandBufferRelease(ind_cmd);
+            wgpuCommandEncoderRelease(ind_enc);
+        }
+    }
 
     // ---- Frame graph setup ----
     // Resources persist across frames; register once per session.
@@ -2678,6 +2824,16 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
                 std::fprintf(stderr,
                     "[engine] cull mesh_offsets: %u meshes, %u total capacity\n",
                     n_meshes, running);
+
+                // Fill mesh_index_counts: per-mesh index_count for indirect args.
+                {
+                    std::vector<uint32_t> idx_counts(n_meshes, 0);
+                    for (uint32_t m = 0; m < n_meshes; ++m) {
+                        idx_counts[m] = scene_.meshes[m].index_count;
+                    }
+                    wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_mesh_index_counts_buffer, 0,
+                                         idx_counts.data(), idx_counts.size() * 4);
+                }
             }
         }
     }

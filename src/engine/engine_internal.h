@@ -71,6 +71,8 @@ struct GpuContext {
     WGPUBuffer cull_mesh_counts_buffer = nullptr;  // per-mesh atomic count, 4 bytes each
     WGPUBuffer cull_mesh_offsets_buffer = nullptr; // per-mesh base offset into buckets, 4 bytes each
     WGPUBuffer cull_mesh_buckets_buffer = nullptr; // flat array of object indices, grouped by mesh
+    WGPUBuffer cull_indirect_args_buffer = nullptr; // per-mesh indirect draw args, 20 bytes each
+    WGPUBuffer cull_mesh_index_counts_buffer = nullptr; // per-mesh index_count, 4 bytes each
     uint32_t   cull_aabb_capacity  = 0;   // in objects (aabb buffer size / 32)
     uint32_t   cull_indices_capacity = 0; // in objects
     uint32_t   cull_mesh_capacity = 0;    // in meshes
@@ -199,6 +201,12 @@ private:
     WGPUBindGroupLayout cull_bgl_      = nullptr;
     WGPUBindGroup       cull_bg_       = nullptr;
     bool                cull_ready_    = false;
+
+    // Indirect args builder (3c-1c-2a).
+    WGPUComputePipeline indirect_build_pipeline_ = nullptr;
+    WGPUBindGroupLayout indirect_build_bgl_      = nullptr;
+    WGPUBindGroup       indirect_build_bg_       = nullptr;
+    bool                indirect_build_ready_    = false;
 
     // HZB compute pipelines and bind groups.
     WGPUComputePipeline hzb_convert_pipeline_  = nullptr;
