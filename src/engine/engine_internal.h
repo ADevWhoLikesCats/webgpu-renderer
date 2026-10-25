@@ -44,6 +44,12 @@ struct GpuContext {
     // Sampler for the composite pass to sample G-buffer textures.
     WGPUSampler gbuf_sampler = nullptr;
 
+    // CSM (Cascaded Shadow Maps). 4 cascades, 1024x1024 each, Depth32Float.
+    // shadow_view is a 2D array view (4 layers), used for sampling in composite.
+    WGPUTexture      shadow_map   = nullptr;
+    WGPUTextureView  shadow_view  = nullptr;
+    WGPUSampler      shadow_sampler = nullptr;
+
     // HZB (Hi-Z) depth pyramid. Mip 0 = converted depth buffer (R32Float),
     // mips 1..N = hierarchically downsampled minimum. Used by SSR/SSAO/SSGI.
     WGPUTexture     hzb_texture = nullptr;

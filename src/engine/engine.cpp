@@ -57,6 +57,9 @@ void Engine::shutdown() {
     if (gpu_.gbuf_material_view) { wgpuTextureViewRelease(gpu_.gbuf_material_view); gpu_.gbuf_material_view = nullptr; }
     if (gpu_.gbuf_material_tex)  { wgpuTextureRelease(gpu_.gbuf_material_tex);      gpu_.gbuf_material_tex  = nullptr; }
     if (gpu_.gbuf_sampler)       { wgpuSamplerRelease(gpu_.gbuf_sampler);           gpu_.gbuf_sampler       = nullptr; }
+    if (gpu_.shadow_view)        { wgpuTextureViewRelease(gpu_.shadow_view);        gpu_.shadow_view        = nullptr; }
+    if (gpu_.shadow_map)         { wgpuTextureRelease(gpu_.shadow_map);             gpu_.shadow_map         = nullptr; }
+    if (gpu_.shadow_sampler)     { wgpuSamplerRelease(gpu_.shadow_sampler);         gpu_.shadow_sampler     = nullptr; }
     if (composite_bg_)  { wgpuBindGroupRelease(composite_bg_);           composite_bg_  = nullptr; }
     if (composite_bgl_) { wgpuBindGroupLayoutRelease(composite_bgl_);    composite_bgl_ = nullptr; }
     if (cull_bg_)       { wgpuBindGroupRelease(cull_bg_);                  cull_bg_       = nullptr; }
@@ -511,6 +514,60 @@ bool Engine::init(const char* app_name,
             shutdown();
             return false;
         }
+    }
+
+    // ---- CSM shadow map ----
+    {
+        // 4 cascades, each 1024x1024, Depth32Float, arranged as a 2D array.
+        WGPUTextureDescriptor td = {};
+        td.dimension         = WGPUTextureDimension_2D;
+        td.size              = { 1024, 1024, 4 };  // depthOrArrayLayers = 4 (cascades)
+        td.format            = WGPUTextureFormat_Depth32Float;
+        td.mipLevelCount     = 1;
+        td.sampleCount       = 1;
+        td.usage             = WGPUTextureUsage_RenderAttachment |
+                               WGPUTextureUsage_TextureBinding;
+        gpu_.shadow_map = wgpuDeviceCreateTexture(gpu_.device, &td);
+        if (!gpu_.shadow_map) {
+            err = "shadow map creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUTextureViewDescriptor vd = {};
+        vd.format          = WGPUTextureFormat_Depth32Float;
+        vd.dimension       = WGPUTextureViewDimension_2DArray;  // array of 4 cascades
+        vd.baseMipLevel    = 0;
+        vd.mipLevelCount   = 1;
+        vd.baseArrayLayer  = 0;
+        vd.arrayLayerCount = 4;
+        vd.aspect          = WGPUTextureAspect_DepthOnly;
+        gpu_.shadow_view = wgpuTextureCreateView(gpu_.shadow_map, &vd);
+        if (!gpu_.shadow_view) {
+            err = "shadow view creation failed";
+            shutdown();
+            return false;
+        }
+
+        // Comparison sampler for PCF (filter across the depth map).
+        WGPUSamplerDescriptor ssd = {};
+        ssd.addressModeU  = WGPUAddressMode_ClampToEdge;
+        ssd.addressModeV  = WGPUAddressMode_ClampToEdge;
+        ssd.addressModeW  = WGPUAddressMode_ClampToEdge;
+        ssd.magFilter     = WGPUFilterMode_Linear;
+        ssd.minFilter     = WGPUFilterMode_Linear;
+        ssd.mipmapFilter  = WGPUMipmapFilterMode_Nearest;
+        ssd.maxAnisotropy = 1;
+        ssd.compare       = WGPUCompareFunction_Less;  // shadow comparison: depth < stored = lit
+        gpu_.shadow_sampler = wgpuDeviceCreateSampler(gpu_.device, &ssd);
+        if (!gpu_.shadow_sampler) {
+            err = "shadow sampler creation failed";
+            shutdown();
+            return false;
+        }
+
+        std::fprintf(stderr,
+            "[engine] CSM shadow map created (1024x1024x4 Depth32Float) + comparison sampler\n");
     }
 
     // ---- Material binding group layout (group 1) ----
