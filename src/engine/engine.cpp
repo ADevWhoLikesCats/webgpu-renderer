@@ -330,20 +330,20 @@ bool Engine::init(const char* app_name,
         }
         {
             WGPUBufferDescriptor bd = {};
-            bd.size  = 64;
+            bd.size  = 80;  // mat4 (64) + object_count u32 + 3 pad u32
             bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
             gpu_.cull_params_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         }
         {
             WGPUBufferDescriptor bd = {};
             bd.size  = 4;
-            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc;
             gpu_.cull_output_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         }
         {
             WGPUBufferDescriptor bd = {};
             bd.size  = (uint64_t)gpu_.cull_indices_capacity * 4ull;
-            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc;
             gpu_.cull_indices_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
         }
 
@@ -1320,6 +1320,10 @@ static WGPUComputePipeline make_cull_pipeline(
         };
         struct Params {
             mvp_proj_view : mat4x4<f32>,
+            object_count  : u32,
+            _pad0         : u32,
+            _pad1         : u32,
+            _pad2         : u32,
         };
 
         @group(0) @binding(0) var<storage, read>       aabbs   : array<Aabb>;
@@ -1327,10 +1331,42 @@ static WGPUComputePipeline make_cull_pipeline(
         @group(0) @binding(2) var<storage, read_write> out_cnt : array<atomic<u32>, 1>;
         @group(0) @binding(3) var<storage, read_write> out_idx : array<u32>;
 
+        fn extract_planes(m: mat4x4<f32>) -> array<vec4<f32>, 6> {
+            let r0 = vec4<f32>(m[0][0], m[1][0], m[2][0], m[3][0]);
+            let r1 = vec4<f32>(m[0][1], m[1][1], m[2][1], m[3][1]);
+            let r2 = vec4<f32>(m[0][2], m[1][2], m[2][2], m[3][2]);
+            let r3 = vec4<f32>(m[0][3], m[1][3], m[2][3], m[3][3]);
+            var p : array<vec4<f32>, 6>;
+            p[0] = r3 + r0;
+            p[1] = r3 - r0;
+            p[2] = r3 + r1;
+            p[3] = r3 - r1;
+            p[4] = r3 + r2;
+            p[5] = r3 - r2;
+            return p;
+        }
+
+        fn aabb_visible(planes: array<vec4<f32>, 6>,
+                        mn: vec3<f32>, mx: vec3<f32>) -> bool {
+            for (var i = 0u; i < 6u; i++) {
+                let p = planes[i];
+                let pv = vec3<f32>(
+                    select(mn.x, mx.x, p.x >= 0.0),
+                    select(mn.y, mx.y, p.y >= 0.0),
+                    select(mn.z, mx.z, p.z >= 0.0));
+                if (dot(p.xyz, pv) + p.w < 0.0) { return false; }
+            }
+            return true;
+        }
+
         @compute @workgroup_size(64, 1, 1)
         fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
-            if (gid.x == 0u) {
-                atomicStore(&out_cnt[0], u32(arrayLength(&aabbs)));
+            if (gid.x >= params.object_count) { return; }
+            let planes = extract_planes(params.mvp_proj_view);
+            let a = aabbs[gid.x];
+            if (aabb_visible(planes, a.min_xyz, a.max_xyz)) {
+                let slot = atomicAdd(&out_cnt[0], 1u);
+                out_idx[slot] = gid.x;
             }
         }
     )";
@@ -1460,7 +1496,7 @@ void Engine::begin_frame() {
                 be[0].size    = (uint64_t)gpu_.cull_aabb_capacity * 32ull;
                 be[1].binding = 1;
                 be[1].buffer  = gpu_.cull_params_buffer;
-                be[1].size    = 64;
+                be[1].size    = 80;
                 be[2].binding = 2;
                 be[2].buffer  = gpu_.cull_output_buffer;
                 be[2].size    = 4;
@@ -1477,9 +1513,21 @@ void Engine::begin_frame() {
             }
         }
         if (cull_ready_) {
+            // Clear the atomic counter.
+            uint32_t zero = 0;
+            wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_output_buffer, 0, &zero, 4);
+            // Upload params: mat4 mvp_proj_view + u32 object_count + pad.
+            struct CullParams {
+                glm::mat4 mvp_proj_view;
+                uint32_t  object_count;
+                uint32_t  _pad[3];
+            } params = {};
+            params.mvp_proj_view = mvp_proj_view;
+            params.object_count  = (uint32_t)scene_.objects.size();
             wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_params_buffer, 0,
-                                 &mvp_proj_view, sizeof(glm::mat4));
+                                 &params, sizeof(params));
 
+            // Dispatch compute.
             WGPUCommandEncoder cull_enc = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
             WGPUComputePassDescriptor cpd = {};
             WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(cull_enc, &cpd);
@@ -1489,10 +1537,50 @@ void Engine::begin_frame() {
             wgpuComputePassEncoderDispatchWorkgroups(cp, (n + 63) / 64, 1, 1);
             wgpuComputePassEncoderEnd(cp);
             wgpuComputePassEncoderRelease(cp);
+
+            // Read back the count for verification (3b only — 3c will consume
+            // it directly on GPU without a readback).
+            WGPUBufferDescriptor bd_rb = {};
+            bd_rb.size  = 4;
+            bd_rb.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+            WGPUBuffer readback = wgpuDeviceCreateBuffer(gpu_.device, &bd_rb);
+            wgpuCommandEncoderCopyBufferToBuffer(cull_enc,
+                gpu_.cull_output_buffer, 0, readback, 0, 4);
+
             WGPUCommandBuffer cull_cmd = wgpuCommandEncoderFinish(cull_enc, nullptr);
             wgpuQueueSubmit(gpu_.queue, 1, &cull_cmd);
             wgpuCommandBufferRelease(cull_cmd);
             wgpuCommandEncoderRelease(cull_enc);
+
+            // Map-read the count (blocking, 100ms cap).
+            struct MapState { bool done = false; bool ok = false; } ms;
+            WGPUBufferMapCallbackInfo mcb = {};
+            mcb.mode = WGPUCallbackMode_AllowSpontaneous;
+            mcb.callback = [](WGPUMapAsyncStatus st, WGPUStringView, void* u1, void*) {
+                auto* m = static_cast<MapState*>(u1);
+                m->done = true;
+                m->ok = (st == WGPUMapAsyncStatus_Success);
+            };
+            mcb.userdata1 = &ms;
+            wgpuBufferMapAsync(readback, WGPUMapMode_Read, 0, 4, mcb);
+            int waited = 0;
+            while (!ms.done && waited < 100) {
+                wgpuInstanceProcessEvents(gpu_.instance);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                waited++;
+            }
+            if (ms.ok) {
+                const uint32_t* gpu_count = (const uint32_t*)
+                    wgpuBufferGetConstMappedRange(readback, 0, 4);
+                static uint32_t last_log = 0xFFFFFFFF;
+                if (gpu_count[0] != last_log) {
+                    std::fprintf(stderr,
+                        "[engine] cull GPU: %u visible\n", gpu_count[0]);
+                    last_log = gpu_count[0];
+                }
+                wgpuBufferUnmap(readback);
+            }
+            wgpuBufferRelease(readback);
         }
     }
 
