@@ -23,6 +23,11 @@ void GpuContext::destroy() {
     if (device)   { wgpuDeviceRelease(device);     device   = nullptr; }
     if (adapter)  { wgpuAdapterRelease(adapter);   adapter  = nullptr; }
     if (instance) { wgpuInstanceRelease(instance); instance = nullptr; }
+
+    if (cull_aabb_buffer)    { wgpuBufferRelease(cull_aabb_buffer);    cull_aabb_buffer    = nullptr; }
+    if (cull_params_buffer)  { wgpuBufferRelease(cull_params_buffer);  cull_params_buffer  = nullptr; }
+    if (cull_output_buffer)  { wgpuBufferRelease(cull_output_buffer);  cull_output_buffer  = nullptr; }
+    if (cull_indices_buffer) { wgpuBufferRelease(cull_indices_buffer); cull_indices_buffer = nullptr; }
 }
 
 Engine::~Engine() { shutdown(); }
@@ -48,6 +53,24 @@ void Engine::shutdown() {
     if (gpu_.gbuf_sampler)       { wgpuSamplerRelease(gpu_.gbuf_sampler);           gpu_.gbuf_sampler       = nullptr; }
     if (composite_bg_)  { wgpuBindGroupRelease(composite_bg_);           composite_bg_  = nullptr; }
     if (composite_bgl_) { wgpuBindGroupLayoutRelease(composite_bgl_);    composite_bgl_ = nullptr; }
+    if (cull_bg_)       { wgpuBindGroupRelease(cull_bg_);                  cull_bg_       = nullptr; }
+    if (cull_bgl_)      { wgpuBindGroupLayoutRelease(cull_bgl_);          cull_bgl_      = nullptr; }
+    if (cull_pipeline_) { wgpuComputePipelineRelease(cull_pipeline_);     cull_pipeline_ = nullptr; }
+    cull_ready_ = false;
+
+    // HZB resources (previously leaked)
+    if (hzb_convert_bg_) { wgpuBindGroupRelease(hzb_convert_bg_); hzb_convert_bg_ = nullptr; }
+    for (auto bg : hzb_downsample_bgs_) if (bg) wgpuBindGroupRelease(bg);
+    hzb_downsample_bgs_.clear();
+    if (hzb_convert_bgl_)    { wgpuBindGroupLayoutRelease(hzb_convert_bgl_);    hzb_convert_bgl_    = nullptr; }
+    if (hzb_downsample_bgl_) { wgpuBindGroupLayoutRelease(hzb_downsample_bgl_); hzb_downsample_bgl_ = nullptr; }
+    if (hzb_convert_pipeline_)    { wgpuComputePipelineRelease(hzb_convert_pipeline_);    hzb_convert_pipeline_    = nullptr; }
+    if (hzb_downsample_pipeline_) { wgpuComputePipelineRelease(hzb_downsample_pipeline_); hzb_downsample_pipeline_ = nullptr; }
+    for (auto v : gpu_.hzb_mip_views)     if (v) wgpuTextureViewRelease(v);
+    for (auto v : gpu_.hzb_storage_views) if (v) wgpuTextureViewRelease(v);
+    gpu_.hzb_mip_views.clear();
+    gpu_.hzb_storage_views.clear();
+    if (gpu_.hzb_texture) { wgpuTextureRelease(gpu_.hzb_texture); gpu_.hzb_texture = nullptr; }
     if (!initialized_) return;
     if (surface_.surface) { wgpuSurfaceRelease(surface_.surface); surface_.surface = nullptr; }
     gpu_.destroy();
@@ -292,6 +315,66 @@ bool Engine::init(const char* app_name,
             return false;
         }
         std::fprintf(stderr, "[engine] uniform buffer + bind group ready\n");
+    }
+
+    // ---- Compute culling buffers + BGL (step 3a) ----
+    {
+        gpu_.cull_aabb_capacity    = 8192;
+        gpu_.cull_indices_capacity = 8192;
+
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = (uint64_t)gpu_.cull_aabb_capacity * 32ull;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            gpu_.cull_aabb_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        }
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = 64;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            gpu_.cull_params_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        }
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = 4;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            gpu_.cull_output_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        }
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = (uint64_t)gpu_.cull_indices_capacity * 4ull;
+            bd.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
+            gpu_.cull_indices_buffer = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+        }
+
+        if (!gpu_.cull_aabb_buffer || !gpu_.cull_params_buffer ||
+            !gpu_.cull_output_buffer || !gpu_.cull_indices_buffer) {
+            err = "cull buffer creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupLayoutEntry e[4] = {};
+        e[0].binding = 0; e[0].visibility = WGPUShaderStage_Compute;
+        e[0].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+        e[1].binding = 1; e[1].visibility = WGPUShaderStage_Compute;
+        e[1].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+        e[2].binding = 2; e[2].visibility = WGPUShaderStage_Compute;
+        e[2].buffer.type = WGPUBufferBindingType_Storage;
+        e[3].binding = 3; e[3].visibility = WGPUShaderStage_Compute;
+        e[3].buffer.type = WGPUBufferBindingType_Storage;
+
+        WGPUBindGroupLayoutDescriptor bgl_desc = {};
+        bgl_desc.entryCount = 4;
+        bgl_desc.entries    = e;
+        cull_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl_desc);
+        if (!cull_bgl_) {
+            err = "cull BGL creation failed";
+            shutdown();
+            return false;
+        }
+
+        std::fprintf(stderr, "[engine] cull buffers + BGL ready\n");
     }
 
     // ---- G-buffer textures (all RGBA8Unorm, TextureBinding + RenderAttachment) ----
@@ -1225,6 +1308,61 @@ static WGPUComputePipeline make_hzb_downsample_pipeline(
     return pipe;
 }
 
+static WGPUComputePipeline make_cull_pipeline(
+    WGPUDevice device, WGPUBindGroupLayout bgl)
+{
+    const char* wgsl = R"(
+        struct Aabb {
+            min_xyz : vec3<f32>,
+            _pad0   : f32,
+            max_xyz : vec3<f32>,
+            _pad1   : f32,
+        };
+        struct Params {
+            mvp_proj_view : mat4x4<f32>,
+        };
+
+        @group(0) @binding(0) var<storage, read>       aabbs   : array<Aabb>;
+        @group(0) @binding(1) var<storage, read>       params  : Params;
+        @group(0) @binding(2) var<storage, read_write> out_cnt : array<atomic<u32>, 1>;
+        @group(0) @binding(3) var<storage, read_write> out_idx : array<u32>;
+
+        @compute @workgroup_size(64, 1, 1)
+        fn cs_main(@builtin(global_invocation_id) gid : vec3<u32>) {
+            if (gid.x == 0u) {
+                atomicStore(&out_cnt[0], u32(arrayLength(&aabbs)));
+            }
+        }
+    )";
+
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code.data   = wgsl;
+    src.code.length = strlen(wgsl);
+
+    WGPUShaderModuleDescriptor smd = {};
+    smd.nextInChain = &src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) { std::fprintf(stderr, "[engine] cull shader failed\n"); return nullptr; }
+
+    WGPUPipelineLayoutDescriptor pld = {};
+    pld.bindGroupLayoutCount = 1;
+    pld.bindGroupLayouts     = &bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pld);
+
+    WGPUComputePipelineDescriptor cpd = {};
+    cpd.layout             = pl;
+    cpd.compute.module     = mod;
+    cpd.compute.entryPoint.data   = "cs_main";
+    cpd.compute.entryPoint.length = 7;
+
+    WGPUComputePipeline pipe = wgpuDeviceCreateComputePipeline(device, &cpd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] cull pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
 void Engine::begin_frame() {
     if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
@@ -1310,6 +1448,53 @@ void Engine::begin_frame() {
     // already produce a flip that cancels it. Removing the flip here.
     glm::mat4 mvp = proj * view;  // = proj * view, multiplied by obj.transform per object
     glm::mat4 mvp_proj_view = mvp;  // alias for the loop
+
+    // ---- Compute culling dispatch (3a: verification only) ----
+    if (scene_.loaded && cull_bgl_ && gpu_.cull_aabb_buffer) {
+        if (!cull_ready_) {
+            cull_pipeline_ = make_cull_pipeline(gpu_.device, cull_bgl_);
+            if (cull_pipeline_) {
+                WGPUBindGroupEntry be[4] = {};
+                be[0].binding = 0;
+                be[0].buffer  = gpu_.cull_aabb_buffer;
+                be[0].size    = (uint64_t)gpu_.cull_aabb_capacity * 32ull;
+                be[1].binding = 1;
+                be[1].buffer  = gpu_.cull_params_buffer;
+                be[1].size    = 64;
+                be[2].binding = 2;
+                be[2].buffer  = gpu_.cull_output_buffer;
+                be[2].size    = 4;
+                be[3].binding = 3;
+                be[3].buffer  = gpu_.cull_indices_buffer;
+                be[3].size    = (uint64_t)gpu_.cull_indices_capacity * 4ull;
+
+                WGPUBindGroupDescriptor bgd = {};
+                bgd.layout     = cull_bgl_;
+                bgd.entryCount = 4;
+                bgd.entries    = be;
+                cull_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+                if (cull_bg_) cull_ready_ = true;
+            }
+        }
+        if (cull_ready_) {
+            wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_params_buffer, 0,
+                                 &mvp_proj_view, sizeof(glm::mat4));
+
+            WGPUCommandEncoder cull_enc = wgpuDeviceCreateCommandEncoder(gpu_.device, nullptr);
+            WGPUComputePassDescriptor cpd = {};
+            WGPUComputePassEncoder cp = wgpuCommandEncoderBeginComputePass(cull_enc, &cpd);
+            wgpuComputePassEncoderSetPipeline(cp, cull_pipeline_);
+            wgpuComputePassEncoderSetBindGroup(cp, 0, cull_bg_, 0, nullptr);
+            uint32_t n = (uint32_t)scene_.objects.size();
+            wgpuComputePassEncoderDispatchWorkgroups(cp, (n + 63) / 64, 1, 1);
+            wgpuComputePassEncoderEnd(cp);
+            wgpuComputePassEncoderRelease(cp);
+            WGPUCommandBuffer cull_cmd = wgpuCommandEncoderFinish(cull_enc, nullptr);
+            wgpuQueueSubmit(gpu_.queue, 1, &cull_cmd);
+            wgpuCommandBufferRelease(cull_cmd);
+            wgpuCommandEncoderRelease(cull_enc);
+        }
+    }
 
 
     // ---- Frame graph setup ----
@@ -2147,6 +2332,34 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
     scene_.aabb_min = glm::min(scene_.aabb_min, scene_min);
     scene_.aabb_max = glm::max(scene_.aabb_max, scene_max);
     scene_.loaded   = true;
+
+    // ---- Fill cull AABB buffer with world-space AABBs for all objects ----
+    {
+        uint32_t n = (uint32_t)scene_.objects.size();
+        if (n > gpu_.cull_aabb_capacity) {
+            std::fprintf(stderr,
+                "[engine] WARN: %u objects > cull capacity %u\n",
+                n, gpu_.cull_aabb_capacity);
+        } else if (gpu_.cull_aabb_buffer) {
+            struct AabbPadded {
+                float min_xyz[3]; float pad0;
+                float max_xyz[3]; float pad1;
+            };
+            std::vector<AabbPadded> buf(n);
+            for (uint32_t i = 0; i < n; ++i) {
+                const auto& obj  = scene_.objects[i];
+                const auto& mesh = scene_.meshes[obj.mesh_index];
+                glm::vec3 wmin, wmax;
+                transform_aabb(mesh.aabb_min, mesh.aabb_max, obj.transform, wmin, wmax);
+                buf[i].min_xyz[0] = wmin.x; buf[i].min_xyz[1] = wmin.y; buf[i].min_xyz[2] = wmin.z; buf[i].pad0 = 0;
+                buf[i].max_xyz[0] = wmax.x; buf[i].max_xyz[1] = wmax.y; buf[i].max_xyz[2] = wmax.z; buf[i].pad1 = 0;
+            }
+            wgpuQueueWriteBuffer(gpu_.queue, gpu_.cull_aabb_buffer, 0,
+                                 buf.data(), buf.size() * sizeof(AabbPadded));
+            std::fprintf(stderr,
+                "[engine] cull AABB buffer: %u objects uploaded\n", n);
+        }
+    }
 
     std::fprintf(stderr,
         "[engine] scene: %zu objects, AABB (%.2f,%.2f,%.2f)..(%.2f,%.2f,%.2f)\n",

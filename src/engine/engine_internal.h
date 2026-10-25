@@ -53,10 +53,22 @@ struct GpuContext {
     uint32_t        hzb_width = 0;
     uint32_t        hzb_height = 0;
 
-    // Per-frame uniforms (MVP + model matrix).
+    // Per-object uniforms in a storage buffer (indexed by instance obj_idx).
     WGPUBuffer        uniform_buffer    = nullptr;
     WGPUBindGroupLayout uniform_bgl     = nullptr;
     WGPUBindGroup     uniform_bind_group = nullptr;
+
+    // Compute culling buffers (step 3: GPU-driven frustum cull).
+    //   cull_aabb_buffer:    per-object world-space AABBs, 32 bytes/object
+    //   cull_params_buffer:  mvp_proj_view mat4, 64 bytes
+    //   cull_output_buffer:  visible count (1 uint), 4 bytes
+    //   cull_indices_buffer: visible object uniform slots, 4 bytes/object
+    WGPUBuffer cull_aabb_buffer    = nullptr;
+    WGPUBuffer cull_params_buffer  = nullptr;
+    WGPUBuffer cull_output_buffer  = nullptr;
+    WGPUBuffer cull_indices_buffer = nullptr;
+    uint32_t   cull_aabb_capacity  = 0;   // in objects (aabb buffer size / 32)
+    uint32_t   cull_indices_capacity = 0; // in objects
 
     // Geometry.
     WGPUBuffer vertex_buffer = nullptr;
@@ -176,6 +188,12 @@ private:
 
     // Material binding layout (group 1): base color + MR + normal + sampler.
     WGPUBindGroupLayout material_bgl_ = nullptr;
+
+    // Compute culling pipeline + bind group (step 3).
+    WGPUComputePipeline cull_pipeline_ = nullptr;
+    WGPUBindGroupLayout cull_bgl_      = nullptr;
+    WGPUBindGroup       cull_bg_       = nullptr;
+    bool                cull_ready_    = false;
 
     // HZB compute pipelines and bind groups.
     WGPUComputePipeline hzb_convert_pipeline_  = nullptr;
