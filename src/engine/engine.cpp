@@ -95,6 +95,7 @@ void Engine::shutdown() {
     if (hzb_downsample_bgl_) { wgpuBindGroupLayoutRelease(hzb_downsample_bgl_); hzb_downsample_bgl_ = nullptr; }
     if (hzb_convert_pipeline_)    { wgpuComputePipelineRelease(hzb_convert_pipeline_);    hzb_convert_pipeline_    = nullptr; }
     if (hzb_downsample_pipeline_) { wgpuComputePipelineRelease(hzb_downsample_pipeline_); hzb_downsample_pipeline_ = nullptr; }
+    if (gpu_.hzb_sample_view) { wgpuTextureViewRelease(gpu_.hzb_sample_view); gpu_.hzb_sample_view = nullptr; }
     for (auto v : gpu_.hzb_mip_views)     if (v) wgpuTextureViewRelease(v);
     for (auto v : gpu_.hzb_storage_views) if (v) wgpuTextureViewRelease(v);
     gpu_.hzb_mip_views.clear();
@@ -584,7 +585,7 @@ bool Engine::init(const char* app_name,
             }
         }
 
-        WGPUBindGroupLayoutEntry e[5] = {};
+        WGPUBindGroupLayoutEntry e[6] = {};
         e[0].binding = 0;
         e[0].visibility = WGPUShaderStage_Fragment;
         e[0].texture.sampleType = WGPUTextureSampleType_Float;
@@ -608,9 +609,14 @@ bool Engine::init(const char* app_name,
         e[4].buffer.type = WGPUBufferBindingType_Uniform;
         e[4].buffer.hasDynamicOffset = false;
         e[4].buffer.minBindingSize = 160;
+        // HZB (whole-mips view, for hierarchical empty-space skipping)
+        e[5].binding = 5;
+        e[5].visibility = WGPUShaderStage_Fragment;
+        e[5].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+        e[5].texture.viewDimension = WGPUTextureViewDimension_2D;
 
         WGPUBindGroupLayoutDescriptor bgl = {};
-        bgl.entryCount = 5;
+        bgl.entryCount = 6;
         bgl.entries = e;
         ssr_scene_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
         if (!ssr_scene_bgl_) {
@@ -619,31 +625,7 @@ bool Engine::init(const char* app_name,
             return false;
         }
 
-        WGPUBindGroupEntry be[5] = {};
-        be[0].binding = 0;
-        be[0].textureView = gpu_.scene_color_view;
-        be[1].binding = 1;
-        be[1].sampler = ssr_scene_sampler_;
-        be[2].binding = 2;
-        be[2].textureView = gpu_.depth_view;
-        be[3].binding = 3;
-        be[3].textureView = gpu_.gbuf_normal_view;
-        be[4].binding = 4;
-        be[4].buffer = ssr_extra_buffer_;
-        be[4].offset = 0;
-        be[4].size = 160;
-
-        WGPUBindGroupDescriptor bgd = {};
-        bgd.layout = ssr_scene_bgl_;
-        bgd.entryCount = 5;
-        bgd.entries = be;
-        ssr_scene_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
-        if (!ssr_scene_bg_) {
-            err = "ssr bind group creation failed";
-            shutdown();
-            return false;
-        }
-        std::fprintf(stderr, "[engine] ssr composite resources ready (5 bindings)\n");
+        std::fprintf(stderr, "[engine] ssr BGL ready (bind group deferred until HZB exists)\n");
     }
 
     // ---- CSM shadow map ----
@@ -944,8 +926,57 @@ bool Engine::init(const char* app_name,
                 return false;
             }
         }
+
+        // Whole-mips view of hzb_texture, for SSR sampling by mip level.
+        {
+            WGPUTextureViewDescriptor vd_all = {};
+            vd_all.format          = WGPUTextureFormat_R32Float;
+            vd_all.dimension       = WGPUTextureViewDimension_2D;
+            vd_all.baseMipLevel    = 0;
+            vd_all.mipLevelCount   = mips;
+            vd_all.baseArrayLayer  = 0;
+            vd_all.arrayLayerCount = 1;
+            vd_all.aspect          = WGPUTextureAspect_All;
+            gpu_.hzb_sample_view = wgpuTextureCreateView(gpu_.hzb_texture, &vd_all);
+            if (!gpu_.hzb_sample_view) {
+                err = "HZB sample view creation failed";
+                shutdown();
+                return false;
+            }
+        }
         std::fprintf(stderr, "[engine] HZB texture created (%ux%u, R32Float, %u mips)\n",
                      width, height, mips);
+    }
+
+    // ---- SSR composite bind group (deferred; HZB sample view now exists) ----
+    {
+        WGPUBindGroupEntry be[6] = {};
+        be[0].binding = 0;
+        be[0].textureView = gpu_.scene_color_view;
+        be[1].binding = 1;
+        be[1].sampler = ssr_scene_sampler_;
+        be[2].binding = 2;
+        be[2].textureView = gpu_.depth_view;
+        be[3].binding = 3;
+        be[3].textureView = gpu_.gbuf_normal_view;
+        be[4].binding = 4;
+        be[4].buffer = ssr_extra_buffer_;
+        be[4].offset = 0;
+        be[4].size = 160;
+        be[5].binding = 5;
+        be[5].textureView = gpu_.hzb_sample_view;
+
+        WGPUBindGroupDescriptor bgd = {};
+        bgd.layout = ssr_scene_bgl_;
+        bgd.entryCount = 6;
+        bgd.entries = be;
+        ssr_scene_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+        if (!ssr_scene_bg_) {
+            err = "ssr bind group creation failed (post-HZB)";
+            shutdown();
+            return false;
+        }
+        std::fprintf(stderr, "[engine] ssr composite bind group ready (6 bindings)\n");
     }
 
     // ---- HZB convert BGL: depth input + R32Float storage output ----
@@ -1622,7 +1653,7 @@ static WGPURenderPipeline make_composite_pipeline(
 
             // Single directional light.
             let L       = normalize(vec3<f32>(0.4, 0.8, 0.3));
-            let radiance = vec3<f32>(1.0, 0.95, 0.85) * 25.0;  // warm sun, boosted
+            let radiance = vec3<f32>(1.0, 0.95, 0.85) * 12.0;  // warm sun, boosted
 
             let H     = normalize(V + L);
             let NdotL = max(dot(N, L), 0.0);
@@ -2051,7 +2082,9 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
     WGPUDevice device, WGPUTextureFormat color_format,
     WGPUBindGroupLayout scene_bgl)
 {
-    // SSR-3: naive screen-space raymarch. Fixed steps, no HZB, no denoise.
+    // SSR-4: HZB-driven raymarch. Uses the depth pyramid for hierarchical
+    // empty-space skipping, so rays reach 20+ world units in 32 iterations.
+    // Still linear-ish in step count but each step can skip many pixels.
     const char* wgsl = R"(
         struct SsrExtra {
             inv_view_proj : mat4x4<f32>,
@@ -2065,6 +2098,7 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
         @group(0) @binding(2) var t_depth  : texture_depth_2d;
         @group(0) @binding(3) var t_normal : texture_2d<f32>;
         @group(0) @binding(4) var<uniform> ssr : SsrExtra;
+        @group(0) @binding(5) var t_hzb    : texture_2d<f32>;
 
         struct VSOut {
             @builtin(position) clip : vec4<f32>,
@@ -2101,7 +2135,7 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
 
         @fragment
         fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
-            let scene_col = textureSample(t_scene, s_scene, in.uv).rgb;
+            let scene_col = textureSampleLevel(t_scene, s_scene, in.uv, 0.0).rgb;
 
             let dims = vec2<i32>(i32(ssr.screen_size.x), i32(ssr.screen_size.y));
             let px   = vec2<i32>(i32(in.uv.x * f32(dims.x)), i32(in.uv.y * f32(dims.y)));
@@ -2118,36 +2152,71 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
             let NdotV = max(dot(-V, N), 0.001);
             let F     = 0.04 + 0.96 * pow(1.0 - NdotV, 5.0);
 
+            // --- SSR-4b raymarch: conservative steps, crossed-surface hit test ---
             let origin = world_pos + N * 0.02;
-            let step_size = 0.15;
-            var hit = false;
+
+            var t      = 0.3;     // start small, grow slowly
+            var hit    = false;
             var hit_uv = in.uv;
-            for (var i = 0; i < 32; i++) {
-                let t = f32(i + 1) * step_size;
+            var prev_ray_depth = depth_z;  // previous step's ray depth (in [0,1])
+
+            for (var i = 0; i < 48; i++) {
                 let P = origin + R * t;
                 let clip = ssr.view_proj * vec4<f32>(P, 1.0);
                 let ndc = clip.xyz / clip.w;
                 let ray_uv = vec2<f32>(ndc.x * 0.5 + 0.5,
                                        1.0 - (ndc.y * 0.5 + 0.5));
                 let ray_depth = (ndc.z + 1.0) * 0.5;
+
                 if (ray_uv.x < 0.0 || ray_uv.x > 1.0 ||
                     ray_uv.y < 0.0 || ray_uv.y > 1.0 ||
                     ray_depth < 0.0 || ray_depth > 1.0) {
-                    continue;
+                    break;
                 }
+
                 let ray_px = vec2<i32>(i32(ray_uv.x * f32(dims.x)),
                                         i32(ray_uv.y * f32(dims.y)));
                 let scene_depth = textureLoad(t_depth, ray_px, 0);
-                if (ray_depth > scene_depth && scene_depth < 0.9999) {
-                    hit_uv = ray_uv;
-                    hit = true;
-                    break;
+
+                // Crossed-surface hit test: only count as hit if the RAY
+                // crossed the surface between prev and current step. This
+                // eliminates "ray already past the car" false positives.
+                if (scene_depth < 0.9999) {
+                    if (ray_depth >= scene_depth && prev_ray_depth < scene_depth) {
+                        hit_uv = ray_uv;
+                        hit = true;
+                        break;
+                    }
                 }
+
+                // Advance conservatively. Empty HZB block → grow moderately.
+                let hzb_depth = textureLoad(t_hzb, ray_px, 2).r;
+                if (ray_depth < hzb_depth - 0.0005) {
+                    t = t * 1.15 + 0.1;   // slow growth
+                } else {
+                    t = t + 0.05;         // near geometry, small step
+                }
+
+                prev_ray_depth = ray_depth;
             }
 
             if (!hit) { return vec4<f32>(scene_col, 1.0); }
-            let hit_col = textureSampleLevel(t_scene, s_scene, hit_uv, 0.0).rgb;
-            let out_col = mix(scene_col, hit_col, F * 0.8);
+
+            // 4-tap PCF on the reflection: sample scene_color at hit_uv and
+            // three neighbors, average. Smooths the raymarch banding.
+            let pcf_off = 1.0 / f32(dims.x);
+            let hit_a = textureSampleLevel(t_scene, s_scene, hit_uv, 0.0).rgb;
+            let hit_b = textureSampleLevel(t_scene, s_scene, hit_uv + vec2<f32>(pcf_off, 0.0), 0.0).rgb;
+            let hit_c = textureSampleLevel(t_scene, s_scene, hit_uv + vec2<f32>(0.0, pcf_off), 0.0).rgb;
+            let hit_d = textureSampleLevel(t_scene, s_scene, hit_uv + vec2<f32>(pcf_off, pcf_off), 0.0).rgb;
+            let hit_col = (hit_a + hit_b + hit_c + hit_d) * 0.25;
+
+            // Fresnel-weighted blend with a floor so black metal reflects
+            // visibly at all angles.
+            // Lower blend floor: the raymarch is noisy, so reflections are
+            // subtle. Hides incoherence without a denoiser.
+            let blend = clamp(F * 0.3 + 0.15, 0.0, 0.6);
+            let out_col = mix(scene_col, hit_col, blend);
             return vec4<f32>(out_col, 1.0);
         }
     )";
@@ -3272,9 +3341,9 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
         ground.aabb_max     = glm::vec3(cx + half_size, y, cz + half_size);
 
         Material gmat;
-        gmat.base_color = glm::vec4(0.35f, 0.35f, 0.35f, 1.0f);
-        gmat.roughness  = 0.85f;
-        gmat.metallic   = 0.0f;
+        gmat.base_color = glm::vec4(0.02f, 0.02f, 0.02f, 1.0f);  // near-black
+        gmat.roughness  = 0.1f;   // smooth
+        gmat.metallic   = 1.0f;   // metal → strong Fresnel reflection
         gmat.ao         = 1.0f;
         gmat.bind_group = scene_.materials[0].bind_group;  // reuse default bind group
 

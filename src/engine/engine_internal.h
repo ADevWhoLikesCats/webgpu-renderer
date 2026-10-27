@@ -63,8 +63,9 @@ struct GpuContext {
     // HZB (Hi-Z) depth pyramid. Mip 0 = converted depth buffer (R32Float),
     // mips 1..N = hierarchically downsampled minimum. Used by SSR/SSAO/SSGI.
     WGPUTexture     hzb_texture = nullptr;
-    std::vector<WGPUTextureView> hzb_mip_views;      // all mips, for sampling
+    std::vector<WGPUTextureView> hzb_mip_views;      // per-mip, for storage writes
     std::vector<WGPUTextureView> hzb_storage_views;  // per-mip, for storage writes
+    WGPUTextureView hzb_sample_view = nullptr;       // whole-mips view, for SSR sampling
     uint32_t        hzb_mip_count = 0;
     uint32_t        hzb_width = 0;
     uint32_t        hzb_height = 0;
