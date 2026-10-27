@@ -44,6 +44,8 @@ void Engine::shutdown() {
     triangle_pipeline_ready_ = false;
     if (offscreen_view_)  { wgpuTextureViewRelease(offscreen_view_);  offscreen_view_  = nullptr; }
     if (offscreen_color_) { wgpuTextureRelease(offscreen_color_);     offscreen_color_ = nullptr; }
+    if (gpu_.scene_color_view) { wgpuTextureViewRelease(gpu_.scene_color_view); gpu_.scene_color_view = nullptr; }
+    if (gpu_.scene_color_tex)  { wgpuTextureRelease(gpu_.scene_color_tex);      gpu_.scene_color_tex  = nullptr; }
     if (gpu_.depth_view)     { wgpuTextureViewRelease(gpu_.depth_view);     gpu_.depth_view     = nullptr; }
     if (gpu_.depth_texture)  { wgpuTextureRelease(gpu_.depth_texture);      gpu_.depth_texture  = nullptr; }
     if (gpu_.uniform_bind_group) { wgpuBindGroupRelease(gpu_.uniform_bind_group); gpu_.uniform_bind_group = nullptr; }
@@ -75,6 +77,11 @@ void Engine::shutdown() {
     if (shadow_uniform_bgl_) { wgpuBindGroupLayoutRelease(shadow_uniform_bgl_);   shadow_uniform_bgl_ = nullptr; }
     if (shadow_pipeline_)    { wgpuRenderPipelineRelease(shadow_pipeline_);       shadow_pipeline_    = nullptr; }
     shadow_pipeline_ready_ = false;
+    if (ssr_scene_bg_)       { wgpuBindGroupRelease(ssr_scene_bg_);                ssr_scene_bg_       = nullptr; }
+    if (ssr_scene_bgl_)      { wgpuBindGroupLayoutRelease(ssr_scene_bgl_);         ssr_scene_bgl_      = nullptr; }
+    if (ssr_composite_pipeline_) { wgpuRenderPipelineRelease(ssr_composite_pipeline_); ssr_composite_pipeline_ = nullptr; }
+    if (ssr_scene_sampler_)  { wgpuSamplerRelease(ssr_scene_sampler_);             ssr_scene_sampler_  = nullptr; }
+    ssr_composite_ready_ = false;
     if (composite_shadow_bg_)  { wgpuBindGroupRelease(composite_shadow_bg_);       composite_shadow_bg_  = nullptr; }
     if (composite_shadow_bgl_) { wgpuBindGroupLayoutRelease(composite_shadow_bgl_); composite_shadow_bgl_ = nullptr; }
     if (composite_extra_buffer_) { wgpuBufferRelease(composite_extra_buffer_); composite_extra_buffer_ = nullptr; }
@@ -248,6 +255,28 @@ bool Engine::init(const char* app_name,
         offscreen_view_ = wgpuTextureCreateView(offscreen_color_, nullptr);
         if (!offscreen_view_) {
             err = "offscreen texture view creation failed";
+            shutdown();
+            return false;
+        }
+
+        // Scene color: same size/format as offscreen, used as composite output
+        // (SSR reads this).
+        WGPUTextureDescriptor sc_td = {};
+        sc_td.dimension     = WGPUTextureDimension_2D;
+        sc_td.size          = { offscreen_width_, offscreen_height_, 1 };
+        sc_td.format        = offscreen_format_;
+        sc_td.mipLevelCount = 1;
+        sc_td.sampleCount   = 1;
+        sc_td.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+        gpu_.scene_color_tex = wgpuDeviceCreateTexture(gpu_.device, &sc_td);
+        if (!gpu_.scene_color_tex) {
+            err = "scene color texture creation failed";
+            shutdown();
+            return false;
+        }
+        gpu_.scene_color_view = wgpuTextureCreateView(gpu_.scene_color_tex, nullptr);
+        if (!gpu_.scene_color_view) {
+            err = "scene color view creation failed";
             shutdown();
             return false;
         }
@@ -522,6 +551,61 @@ bool Engine::init(const char* app_name,
             shutdown();
             return false;
         }
+    }
+
+    // ---- SSR composite resources ----
+    {
+        WGPUSamplerDescriptor sd = {};
+        sd.addressModeU  = WGPUAddressMode_ClampToEdge;
+        sd.addressModeV  = WGPUAddressMode_ClampToEdge;
+        sd.addressModeW  = WGPUAddressMode_ClampToEdge;
+        sd.magFilter     = WGPUFilterMode_Linear;
+        sd.minFilter     = WGPUFilterMode_Linear;
+        sd.mipmapFilter  = WGPUMipmapFilterMode_Nearest;
+        sd.maxAnisotropy = 1;
+        ssr_scene_sampler_ = wgpuDeviceCreateSampler(gpu_.device, &sd);
+        if (!ssr_scene_sampler_) {
+            err = "ssr sampler creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupLayoutEntry e[2] = {};
+        e[0].binding = 0;
+        e[0].visibility = WGPUShaderStage_Fragment;
+        e[0].texture.sampleType = WGPUTextureSampleType_Float;
+        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[1].binding = 1;
+        e[1].visibility = WGPUShaderStage_Fragment;
+        e[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
+        WGPUBindGroupLayoutDescriptor bgl = {};
+        bgl.entryCount = 2;
+        bgl.entries = e;
+        ssr_scene_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
+        if (!ssr_scene_bgl_) {
+            err = "ssr BGL creation failed";
+            shutdown();
+            return false;
+        }
+
+        WGPUBindGroupEntry be[2] = {};
+        be[0].binding = 0;
+        be[0].textureView = gpu_.scene_color_view;
+        be[1].binding = 1;
+        be[1].sampler = ssr_scene_sampler_;
+
+        WGPUBindGroupDescriptor bgd = {};
+        bgd.layout = ssr_scene_bgl_;
+        bgd.entryCount = 2;
+        bgd.entries = be;
+        ssr_scene_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+        if (!ssr_scene_bg_) {
+            err = "ssr bind group creation failed";
+            shutdown();
+            return false;
+        }
+        std::fprintf(stderr, "[engine] ssr composite resources ready\n");
     }
 
     // ---- CSM shadow map ----
@@ -1925,6 +2009,97 @@ static void compute_csm_matrices(
     }
 }
 
+static WGPURenderPipeline make_ssr_composite_pipeline(
+    WGPUDevice device, WGPUTextureFormat color_format,
+    WGPUBindGroupLayout scene_bgl)
+{
+    // SSR-1: fullscreen passthrough. Reads scene_color_, outputs it unchanged.
+    // Later patches will add raymarching here.
+    const char* wgsl = R"(
+        @group(0) @binding(0) var t_scene : texture_2d<f32>;
+        @group(0) @binding(1) var s_scene : sampler;
+
+        struct VSOut {
+            @builtin(position) clip : vec4<f32>,
+            @location(0) uv : vec2<f32>,
+        };
+
+        @vertex
+        fn vs_main(@builtin(vertex_index) i : u32) -> VSOut {
+            var pos = array<vec2<f32>, 3>(
+                vec2<f32>(-1.0, -1.0),
+                vec2<f32>( 3.0, -1.0),
+                vec2<f32>(-1.0,  3.0)
+            );
+            var out : VSOut;
+            out.clip = vec4<f32>(pos[i], 0.0, 1.0);
+            out.uv   = vec2<f32>((pos[i].x + 1.0) * 0.5, 1.0 - (pos[i].y + 1.0) * 0.5);
+            return out;
+        }
+
+        @fragment
+        fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
+            return textureSample(t_scene, s_scene, in.uv);
+        }
+    )";
+
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code.data   = wgsl;
+    src.code.length = strlen(wgsl);
+
+    WGPUShaderModuleDescriptor smd = {};
+    smd.nextInChain = &src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) { std::fprintf(stderr, "[engine] ssr composite shader failed\n"); return nullptr; }
+
+    WGPUColorTargetState ct = {};
+    ct.format    = color_format;
+    ct.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState fs = {};
+    fs.module      = mod;
+    fs.entryPoint.data   = "fs_main";
+    fs.entryPoint.length = 7;
+    fs.targetCount = 1;
+    fs.targets     = &ct;
+
+    WGPUVertexState vs = {};
+    vs.module      = mod;
+    vs.entryPoint.data   = "vs_main";
+    vs.entryPoint.length = 7;
+    vs.bufferCount = 0;
+    vs.buffers     = nullptr;
+
+    WGPUPrimitiveState prim = {};
+    prim.topology  = WGPUPrimitiveTopology_TriangleList;
+    prim.frontFace = WGPUFrontFace_CCW;
+    prim.cullMode  = WGPUCullMode_None;
+
+    WGPUMultisampleState ms = {};
+    ms.count = 1;
+    ms.mask  = 0xFFFFFFFF;
+
+    WGPUPipelineLayoutDescriptor pld = {};
+    pld.bindGroupLayoutCount = 1;
+    pld.bindGroupLayouts     = &scene_bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pld);
+
+    WGPURenderPipelineDescriptor pd = {};
+    pd.layout       = pl;
+    pd.vertex       = vs;
+    pd.primitive    = prim;
+    pd.multisample  = ms;
+    pd.fragment     = &fs;
+    pd.depthStencil = nullptr;
+
+    WGPURenderPipeline pipe = wgpuDeviceCreateRenderPipeline(device, &pd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] ssr composite pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
 void Engine::begin_frame() {
     if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
@@ -2390,7 +2565,7 @@ void Engine::begin_frame() {
         /*writes=*/ { r_offscreen },
         [&](WGPUCommandEncoder enc) {
             WGPURenderPassColorAttachment catt = {};
-            catt.view       = offscreen_view_;
+            catt.view       = gpu_.scene_color_view;  // write to scene color, not final
             catt.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
             catt.loadOp     = WGPULoadOp_Clear;
             catt.storeOp    = WGPUStoreOp_Store;
@@ -2406,6 +2581,38 @@ void Engine::begin_frame() {
             wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(rp, 1, composite_bg_, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(rp, 2, composite_shadow_bg_, 0, nullptr);
+            wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(rp);
+            wgpuRenderPassEncoderRelease(rp);
+        });
+
+    // ---- SSR composite pass: read scene_color_, write offscreen_color_ ----
+    fg_.add_pass("ssr_composite",
+        /*reads=*/  { r_offscreen },  // piggyback on offscreen for ordering; actual read is scene_color
+        /*writes=*/ { r_offscreen },
+        [&](WGPUCommandEncoder enc) {
+            if (!ssr_composite_ready_ && ssr_scene_bgl_) {
+                ssr_composite_pipeline_ = make_ssr_composite_pipeline(
+                    gpu_.device, offscreen_format_, ssr_scene_bgl_);
+                if (ssr_composite_pipeline_) ssr_composite_ready_ = true;
+            }
+            if (!ssr_composite_ready_) return;
+
+            WGPURenderPassColorAttachment catt = {};
+            catt.view       = offscreen_view_;
+            catt.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt.loadOp     = WGPULoadOp_Clear;
+            catt.storeOp    = WGPUStoreOp_Store;
+            catt.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+
+            WGPURenderPassDescriptor cp = {};
+            cp.colorAttachmentCount   = 1;
+            cp.colorAttachments       = &catt;
+            cp.depthStencilAttachment = nullptr;
+
+            WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &cp);
+            wgpuRenderPassEncoderSetPipeline(rp, ssr_composite_pipeline_);
+            wgpuRenderPassEncoderSetBindGroup(rp, 0, ssr_scene_bg_, 0, nullptr);
             wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(rp);
             wgpuRenderPassEncoderRelease(rp);
