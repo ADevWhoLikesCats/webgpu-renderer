@@ -46,6 +46,14 @@ void Engine::shutdown() {
     if (offscreen_color_) { wgpuTextureRelease(offscreen_color_);     offscreen_color_ = nullptr; }
     if (gpu_.scene_color_view) { wgpuTextureViewRelease(gpu_.scene_color_view); gpu_.scene_color_view = nullptr; }
     if (gpu_.scene_color_tex)  { wgpuTextureRelease(gpu_.scene_color_tex);      gpu_.scene_color_tex  = nullptr; }
+    if (gpu_.ssr_color_view) { wgpuTextureViewRelease(gpu_.ssr_color_view); gpu_.ssr_color_view = nullptr; }
+    if (gpu_.ssr_color_tex)  { wgpuTextureRelease(gpu_.ssr_color_tex);      gpu_.ssr_color_tex  = nullptr; }
+    if (gpu_.ssr_mask_view)  { wgpuTextureViewRelease(gpu_.ssr_mask_view);  gpu_.ssr_mask_view  = nullptr; }
+    if (gpu_.ssr_mask_tex)   { wgpuTextureRelease(gpu_.ssr_mask_tex);       gpu_.ssr_mask_tex   = nullptr; }
+    for (int i = 0; i < 2; ++i) {
+        if (gpu_.taa_history_view[i]) { wgpuTextureViewRelease(gpu_.taa_history_view[i]); gpu_.taa_history_view[i] = nullptr; }
+        if (gpu_.taa_history_tex[i])  { wgpuTextureRelease(gpu_.taa_history_tex[i]);      gpu_.taa_history_tex[i]  = nullptr; }
+    }
     if (gpu_.depth_view)     { wgpuTextureViewRelease(gpu_.depth_view);     gpu_.depth_view     = nullptr; }
     if (gpu_.depth_texture)  { wgpuTextureRelease(gpu_.depth_texture);      gpu_.depth_texture  = nullptr; }
     if (gpu_.uniform_bind_group) { wgpuBindGroupRelease(gpu_.uniform_bind_group); gpu_.uniform_bind_group = nullptr; }
@@ -83,6 +91,13 @@ void Engine::shutdown() {
     if (ssr_scene_sampler_)  { wgpuSamplerRelease(ssr_scene_sampler_);             ssr_scene_sampler_  = nullptr; }
     if (ssr_extra_buffer_)   { wgpuBufferRelease(ssr_extra_buffer_);                ssr_extra_buffer_   = nullptr; }
     ssr_composite_ready_ = false;
+    for (int i = 0; i < 2; ++i) {
+        if (taa_bg_[i])      { wgpuBindGroupRelease(taa_bg_[i]);                     taa_bg_[i]          = nullptr; }
+    }
+    if (taa_bgl_)            { wgpuBindGroupLayoutRelease(taa_bgl_);                 taa_bgl_            = nullptr; }
+    if (taa_pipeline_)       { wgpuRenderPipelineRelease(taa_pipeline_);             taa_pipeline_       = nullptr; }
+    if (taa_extra_buffer_)   { wgpuBufferRelease(taa_extra_buffer_);                 taa_extra_buffer_   = nullptr; }
+    taa_ready_ = false;
     if (composite_shadow_bg_)  { wgpuBindGroupRelease(composite_shadow_bg_);       composite_shadow_bg_  = nullptr; }
     if (composite_shadow_bgl_) { wgpuBindGroupLayoutRelease(composite_shadow_bgl_); composite_shadow_bgl_ = nullptr; }
     if (composite_extra_buffer_) { wgpuBufferRelease(composite_extra_buffer_); composite_extra_buffer_ = nullptr; }
@@ -282,6 +297,35 @@ bool Engine::init(const char* app_name,
             shutdown();
             return false;
         }
+
+        // SSR color + mask (2-target output of ssr_composite), and TAA
+        // history ping-pong. All same size/format as offscreen so the
+        // resolve pass can write to either without format conversion.
+        WGPUTextureDescriptor ssr_td = {};
+        ssr_td.dimension     = WGPUTextureDimension_2D;
+        ssr_td.size          = { offscreen_width_, offscreen_height_, 1 };
+        ssr_td.format        = offscreen_format_;
+        ssr_td.mipLevelCount = 1;
+        ssr_td.sampleCount   = 1;
+        ssr_td.usage         = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+
+        gpu_.ssr_color_tex = wgpuDeviceCreateTexture(gpu_.device, &ssr_td);
+        if (!gpu_.ssr_color_tex) { err = "ssr_color tex creation failed"; shutdown(); return false; }
+        gpu_.ssr_color_view = wgpuTextureCreateView(gpu_.ssr_color_tex, nullptr);
+        if (!gpu_.ssr_color_view) { err = "ssr_color view creation failed"; shutdown(); return false; }
+
+        gpu_.ssr_mask_tex = wgpuDeviceCreateTexture(gpu_.device, &ssr_td);
+        if (!gpu_.ssr_mask_tex) { err = "ssr_mask tex creation failed"; shutdown(); return false; }
+        gpu_.ssr_mask_view = wgpuTextureCreateView(gpu_.ssr_mask_tex, nullptr);
+        if (!gpu_.ssr_mask_view) { err = "ssr_mask view creation failed"; shutdown(); return false; }
+
+        for (int i = 0; i < 2; ++i) {
+            gpu_.taa_history_tex[i] = wgpuDeviceCreateTexture(gpu_.device, &ssr_td);
+            if (!gpu_.taa_history_tex[i]) { err = "taa_history tex creation failed"; shutdown(); return false; }
+            gpu_.taa_history_view[i] = wgpuTextureCreateView(gpu_.taa_history_tex[i], nullptr);
+            if (!gpu_.taa_history_view[i]) { err = "taa_history view creation failed"; shutdown(); return false; }
+        }
+
         std::fprintf(stderr, "[engine] offscreen target: %ux%u format=%d\n",
                      offscreen_width_, offscreen_height_, (int)offscreen_format_);
     }
@@ -575,7 +619,7 @@ bool Engine::init(const char* app_name,
         // SSR extra uniforms: inv_view_proj (64) + camera_pos (16) = 80 bytes.
         {
             WGPUBufferDescriptor bd = {};
-            bd.size  = 160;  // inv_view_proj(64) + view_proj(64) + camera_pos(16) + screen_size(16)
+            bd.size  = 224;  // inv_view_proj(64)+view_proj(64)+camera_pos(16)+screen_size(16)+prev_view_proj(64)
             bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
             ssr_extra_buffer_ = wgpuDeviceCreateBuffer(gpu_.device, &bd);
             if (!ssr_extra_buffer_) {
@@ -608,7 +652,7 @@ bool Engine::init(const char* app_name,
         e[4].visibility = WGPUShaderStage_Fragment;
         e[4].buffer.type = WGPUBufferBindingType_Uniform;
         e[4].buffer.hasDynamicOffset = false;
-        e[4].buffer.minBindingSize = 160;
+        e[4].buffer.minBindingSize = 224;
         // HZB (whole-mips view, for hierarchical empty-space skipping)
         e[5].binding = 5;
         e[5].visibility = WGPUShaderStage_Fragment;
@@ -962,7 +1006,7 @@ bool Engine::init(const char* app_name,
         be[4].binding = 4;
         be[4].buffer = ssr_extra_buffer_;
         be[4].offset = 0;
-        be[4].size = 160;
+        be[4].size = 224;
         be[5].binding = 5;
         be[5].textureView = gpu_.hzb_sample_view;
 
@@ -977,6 +1021,54 @@ bool Engine::init(const char* app_name,
             return false;
         }
         std::fprintf(stderr, "[engine] ssr composite bind group ready (6 bindings)\n");
+    }
+
+    // ---- TAA bind group layout + bind group + pipeline ----
+    {
+        WGPUBindGroupLayoutEntry e[6] = {};
+        e[0].binding = 0; e[0].visibility = WGPUShaderStage_Fragment;
+        e[0].texture.sampleType = WGPUTextureSampleType_Float;
+        e[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[1].binding = 1; e[1].visibility = WGPUShaderStage_Fragment;
+        e[1].texture.sampleType = WGPUTextureSampleType_Float;
+        e[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[2].binding = 2; e[2].visibility = WGPUShaderStage_Fragment;
+        e[2].texture.sampleType = WGPUTextureSampleType_Float;
+        e[2].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[3].binding = 3; e[3].visibility = WGPUShaderStage_Fragment;
+        e[3].buffer.type = WGPUBufferBindingType_Uniform;
+        e[3].buffer.hasDynamicOffset = false;
+        e[3].buffer.minBindingSize = 224;
+        e[4].binding = 4; e[4].visibility = WGPUShaderStage_Fragment;
+        e[4].texture.sampleType = WGPUTextureSampleType_Depth;
+        e[4].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[5].binding = 5; e[5].visibility = WGPUShaderStage_Fragment;
+        e[5].sampler.type = WGPUSamplerBindingType_Filtering;
+
+        WGPUBindGroupLayoutDescriptor bgl = {};
+        bgl.entryCount = 6;
+        bgl.entries = e;
+        taa_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
+        if (!taa_bgl_) { err = "taa BGL creation failed"; shutdown(); return false; }
+
+        // Build TWO bind groups, one for each history parity.
+        for (int i = 0; i < 2; ++i) {
+            WGPUBindGroupEntry be[6] = {};
+            be[0].binding = 0; be[0].textureView = gpu_.ssr_color_view;
+            be[1].binding = 1; be[1].textureView = gpu_.ssr_mask_view;
+            be[2].binding = 2; be[2].textureView = gpu_.taa_history_view[i];  // read from history i
+            be[3].binding = 3; be[3].buffer = ssr_extra_buffer_; be[3].offset = 0; be[3].size = 224;
+            be[4].binding = 4; be[4].textureView = gpu_.depth_view;
+            be[5].binding = 5; be[5].sampler = ssr_scene_sampler_;
+
+            WGPUBindGroupDescriptor bgd = {};
+            bgd.layout = taa_bgl_;
+            bgd.entryCount = 6;
+            bgd.entries = be;
+            taa_bg_[i] = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+            if (!taa_bg_[i]) { err = "taa BG creation failed"; shutdown(); return false; }
+        }
+        std::fprintf(stderr, "[engine] taa bind groups ready (pipeline deferred like SSR)\n");
     }
 
     // ---- HZB convert BGL: depth input + R32Float storage output ----
@@ -2078,6 +2170,162 @@ static void compute_csm_matrices(
     }
 }
 
+static WGPURenderPipeline make_taa_pipeline(
+    WGPUDevice device, WGPUTextureFormat color_format,
+    WGPUBindGroupLayout taa_bgl)
+{
+    // TAA resolve for SSR. Reads ssr_color + ssr_mask (current frame),
+    // taa_history_prev (last frame), and ssr_extra (for reprojection via
+    // prev_view_proj + inv_view_proj + depth). Writes resolved color to
+    // offscreen AND to taa_history_curr (ping-pong for next frame).
+    const char* wgsl = R"(
+        struct SsrExtra {
+            inv_view_proj  : mat4x4<f32>,
+            view_proj      : mat4x4<f32>,
+            camera_pos     : vec4<f32>,
+            screen_size    : vec4<f32>,   // .z = frame_idx
+            prev_view_proj : mat4x4<f32>,
+        };
+
+        @group(0) @binding(0) var t_ssr_color    : texture_2d<f32>;
+        @group(0) @binding(1) var t_ssr_mask     : texture_2d<f32>;
+        @group(0) @binding(2) var t_taa_history  : texture_2d<f32>;
+        @group(0) @binding(3) var<uniform> ssr   : SsrExtra;
+        @group(0) @binding(4) var t_depth        : texture_depth_2d;
+        @group(0) @binding(5) var s_lin          : sampler;
+
+        struct VSOut {
+            @builtin(position) clip : vec4<f32>,
+            @location(0) uv : vec2<f32>,
+        };
+
+        struct FSOut {
+            @location(0) color  : vec4<f32>,
+            @location(1) hist   : vec4<f32>,
+        };
+
+        @vertex
+        fn vs_main(@builtin(vertex_index) i : u32) -> VSOut {
+            var pos = array<vec2<f32>, 3>(
+                vec2<f32>(-1.0, -1.0),
+                vec2<f32>( 3.0, -1.0),
+                vec2<f32>(-1.0,  3.0)
+            );
+            var out : VSOut;
+            out.clip = vec4<f32>(pos[i], 0.0, 1.0);
+            out.uv   = vec2<f32>((pos[i].x + 1.0) * 0.5, 1.0 - (pos[i].y + 1.0) * 0.5);
+            return out;
+        }
+
+        fn reconstruct_world(uv: vec2<f32>, depth_z: f32) -> vec3<f32> {
+            let ndc_z = depth_z * 2.0 - 1.0;
+            let ndc   = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+            let h     = ssr.inv_view_proj * vec4<f32>(ndc.x, ndc.y, ndc_z, 1.0);
+            return h.xyz / h.w;
+        }
+
+        @fragment
+        fn fs_main(in : VSOut) -> FSOut {
+            let dims = vec2<i32>(i32(ssr.screen_size.x), i32(ssr.screen_size.y));
+            let px   = vec2<i32>(i32(in.uv.x * f32(dims.x)), i32(in.uv.y * f32(dims.y)));
+
+            let cur_col  = textureLoad(t_ssr_color, px, 0).rgb;
+            let mask     = textureLoad(t_ssr_mask,  px, 0).r;
+            let depth_z  = textureLoad(t_depth, px, 0);
+
+            var out_col = cur_col;
+
+            // Only denoise where SSR contributed. Sky / car body (mask==0)
+            // pass through unchanged — no history blend, no blur.
+            if (mask > 0.001 && depth_z < 0.9999) {
+                let world = reconstruct_world(in.uv, depth_z);
+                let prev_clip = ssr.prev_view_proj * vec4<f32>(world, 1.0);
+                if (abs(prev_clip.w) > 1e-6) {
+                    let prev_ndc = prev_clip.xyz / prev_clip.w;
+                    let prev_uv  = vec2<f32>(prev_ndc.x * 0.5 + 0.5,
+                                              1.0 - (prev_ndc.y * 0.5 + 0.5));
+                    if (prev_uv.x >= 0.0 && prev_uv.x < 1.0 &&
+                        prev_uv.y >= 0.0 && prev_uv.y < 1.0) {
+                        let prev_px = vec2<i32>(i32(prev_uv.x * f32(dims.x)),
+                                                i32(prev_uv.y * f32(dims.y)));
+                        let hist = textureLoad(t_taa_history, prev_px, 0).rgb;
+
+                        // RGB-distance rejection: reject history on large
+                        // disocclusion / lighting change.
+                        let d = length(hist - cur_col);
+                        if (d < 0.05) {
+                            out_col = mix(cur_col, hist, 0.50);
+                        }
+                    }
+                }
+            }
+
+            var out : FSOut;
+            out.color = vec4<f32>(out_col, 1.0);
+            out.hist  = vec4<f32>(out_col, 1.0);   // next frame's history
+            return out;
+        }
+    )";
+
+    WGPUShaderSourceWGSL src = {};
+    src.chain.sType = WGPUSType_ShaderSourceWGSL;
+    src.code.data   = wgsl;
+    src.code.length = strlen(wgsl);
+
+    WGPUShaderModuleDescriptor smd = {};
+    smd.nextInChain = &src.chain;
+    WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
+    if (!mod) { std::fprintf(stderr, "[engine] taa shader failed\n"); return nullptr; }
+
+    WGPUColorTargetState cts[2] = {};
+    cts[0].format    = color_format;
+    cts[0].writeMask = WGPUColorWriteMask_All;
+    cts[1].format    = color_format;
+    cts[1].writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState fs = {};
+    fs.module      = mod;
+    fs.entryPoint.data   = "fs_main";
+    fs.entryPoint.length = 7;
+    fs.targetCount = 2;
+    fs.targets     = cts;
+
+    WGPUVertexState vs = {};
+    vs.module      = mod;
+    vs.entryPoint.data   = "vs_main";
+    vs.entryPoint.length = 7;
+    vs.bufferCount = 0;
+    vs.buffers     = nullptr;
+
+    WGPUPrimitiveState prim = {};
+    prim.topology  = WGPUPrimitiveTopology_TriangleList;
+    prim.frontFace = WGPUFrontFace_CCW;
+    prim.cullMode  = WGPUCullMode_None;
+
+    WGPUMultisampleState ms = {};
+    ms.count = 1;
+    ms.mask  = 0xFFFFFFFF;
+
+    WGPUPipelineLayoutDescriptor pld = {};
+    pld.bindGroupLayoutCount = 1;
+    pld.bindGroupLayouts     = &taa_bgl;
+    WGPUPipelineLayout pl = wgpuDeviceCreatePipelineLayout(device, &pld);
+
+    WGPURenderPipelineDescriptor pd = {};
+    pd.layout       = pl;
+    pd.vertex       = vs;
+    pd.primitive    = prim;
+    pd.multisample  = ms;
+    pd.fragment     = &fs;
+    pd.depthStencil = nullptr;
+
+    WGPURenderPipeline pipe = wgpuDeviceCreateRenderPipeline(device, &pd);
+    wgpuPipelineLayoutRelease(pl);
+    wgpuShaderModuleRelease(mod);
+    std::fprintf(stderr, "[engine] taa pipeline: %p\n", (void*)pipe);
+    return pipe;
+}
+
 static WGPURenderPipeline make_ssr_composite_pipeline(
     WGPUDevice device, WGPUTextureFormat color_format,
     WGPUBindGroupLayout scene_bgl)
@@ -2087,10 +2335,11 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
     // Still linear-ish in step count but each step can skip many pixels.
     const char* wgsl = R"(
         struct SsrExtra {
-            inv_view_proj : mat4x4<f32>,
-            view_proj     : mat4x4<f32>,
-            camera_pos    : vec4<f32>,
-            screen_size   : vec4<f32>,
+            inv_view_proj  : mat4x4<f32>,
+            view_proj      : mat4x4<f32>,
+            camera_pos     : vec4<f32>,
+            screen_size    : vec4<f32>,   // .z = frame_idx (as f32)
+            prev_view_proj : mat4x4<f32>,
         };
 
         @group(0) @binding(0) var t_scene  : texture_2d<f32>;
@@ -2133,29 +2382,45 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
             return h.xyz / h.w;
         }
 
+        struct FSOut {
+            @location(0) color : vec4<f32>,
+            @location(1) mask  : vec4<f32>,
+        };
+
         @fragment
-        fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
+        fn fs_main(in : VSOut) -> FSOut {
             let scene_col = textureSampleLevel(t_scene, s_scene, in.uv, 0.0).rgb;
 
             let dims = vec2<i32>(i32(ssr.screen_size.x), i32(ssr.screen_size.y));
             let px   = vec2<i32>(i32(in.uv.x * f32(dims.x)), i32(in.uv.y * f32(dims.y)));
             let depth_z = textureLoad(t_depth, px, 0);
-            if (depth_z > 0.9999) { return vec4<f32>(scene_col, 1.0); }
+            var out : FSOut;
+            if (depth_z > 0.9999) {
+                out.color = vec4<f32>(scene_col, 1.0);
+                out.mask  = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                return out;
+            }
 
             let world_pos = reconstruct_world(in.uv, depth_z);
             let n_sample  = textureLoad(t_normal, px, 0);
             let N         = oct_decode(n_sample.rg);
             let V         = normalize(world_pos - ssr.camera_pos.xyz);
             let R         = reflect(V, N);
-            if (dot(R, N) < 0.0) { return vec4<f32>(scene_col, 1.0); }
+            if (dot(R, N) < 0.0) {
+                out.color = vec4<f32>(scene_col, 1.0);
+                out.mask  = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                return out;
+            }
 
             let NdotV = max(dot(-V, N), 0.001);
             let F     = 0.04 + 0.96 * pow(1.0 - NdotV, 5.0);
 
             // --- SSR-4b raymarch: conservative steps, crossed-surface hit test ---
-            let origin = world_pos + N * 0.02;
+            let origin = world_pos + N * 0.05;
 
-            var t      = 0.3;     // start small, grow slowly
+            // Jitter start distance by frame_idx to break SSR aliasing.
+            let jitter = fract(sin(f32(ssr.screen_size.z)) * 43758.5453) * 0.05;
+            var t      = 0.3 + jitter;
             var hit    = false;
             var hit_uv = in.uv;
             var prev_ray_depth = depth_z;  // previous step's ray depth (in [0,1])
@@ -2168,6 +2433,7 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
                                        1.0 - (ndc.y * 0.5 + 0.5));
                 let ray_depth = (ndc.z + 1.0) * 0.5;
 
+                // Break immediately if the ray goes off-screen or out of depth bounds.
                 if (ray_uv.x < 0.0 || ray_uv.x > 1.0 ||
                     ray_uv.y < 0.0 || ray_uv.y > 1.0 ||
                     ray_depth < 0.0 || ray_depth > 1.0) {
@@ -2181,8 +2447,10 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
                 // Crossed-surface hit test: only count as hit if the RAY
                 // crossed the surface between prev and current step. This
                 // eliminates "ray already past the car" false positives.
+                // Relaxed hit test: if the ray is slightly behind the scene depth,
+                // count it as a hit.
                 if (scene_depth < 0.9999) {
-                    if (ray_depth >= scene_depth && prev_ray_depth < scene_depth) {
+                    if (ray_depth >= scene_depth - 0.001 && prev_ray_depth < scene_depth + 0.001) {
                         hit_uv = ray_uv;
                         hit = true;
                         break;
@@ -2192,15 +2460,19 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
                 // Advance conservatively. Empty HZB block → grow moderately.
                 let hzb_depth = textureLoad(t_hzb, ray_px, 2).r;
                 if (ray_depth < hzb_depth - 0.0005) {
-                    t = t * 1.15 + 0.1;   // slow growth
+                    t = t * 1.05 + 0.02;  // much slower growth
                 } else {
-                    t = t + 0.05;         // near geometry, small step
+                    t = t + 0.01;         // tiny steps near geometry
                 }
 
                 prev_ray_depth = ray_depth;
             }
 
-            if (!hit) { return vec4<f32>(scene_col, 1.0); }
+            if (!hit) {
+                out.color = vec4<f32>(scene_col, 1.0);
+                out.mask  = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+                return out;
+            }
 
             // 4-tap PCF on the reflection: sample scene_color at hit_uv and
             // three neighbors, average. Smooths the raymarch banding.
@@ -2215,9 +2487,15 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
             // visibly at all angles.
             // Lower blend floor: the raymarch is noisy, so reflections are
             // subtle. Hides incoherence without a denoiser.
-            let blend = clamp(F * 0.3 + 0.15, 0.0, 0.6);
+            // Fade based on the hit UV (so it fades near the screen edge).
+            let edge_dist = min(min(hit_uv.x, 1.0 - hit_uv.x), min(hit_uv.y, 1.0 - hit_uv.y));
+            let edge_fade = clamp(edge_dist * 15.0, 0.0, 1.0);
+            
+            let blend = clamp(F * 0.5 + 0.4, 0.0, 0.9) * edge_fade;
             let out_col = mix(scene_col, hit_col, blend);
-            return vec4<f32>(out_col, 1.0);
+            out.color = vec4<f32>(out_col, 1.0);
+            out.mask  = vec4<f32>(blend, 0.0, 0.0, 1.0);
+            return out;
         }
     )";
 
@@ -2231,16 +2509,18 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
     WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
     if (!mod) { std::fprintf(stderr, "[engine] ssr composite shader failed\n"); return nullptr; }
 
-    WGPUColorTargetState ct = {};
-    ct.format    = color_format;
-    ct.writeMask = WGPUColorWriteMask_All;
+    WGPUColorTargetState cts[2] = {};
+    cts[0].format    = color_format;
+    cts[0].writeMask = WGPUColorWriteMask_All;
+    cts[1].format    = color_format;
+    cts[1].writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState fs = {};
     fs.module      = mod;
     fs.entryPoint.data   = "fs_main";
     fs.entryPoint.length = 7;
-    fs.targetCount = 1;
-    fs.targets     = &ct;
+    fs.targetCount = 2;
+    fs.targets     = cts;
 
     WGPUVertexState vs = {};
     vs.module      = mod;
@@ -2279,6 +2559,7 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
 }
 
 void Engine::begin_frame() {
+    frame_idx_ = (frame_idx_ + 1) & 0xFFFFu;
     if (!initialized_ || !offscreen_view_ || !gpu_.depth_view) return;
 
     // Lazy pipeline creation (outside the graph — pipelines are persistent).
@@ -2770,14 +3051,19 @@ void Engine::begin_frame() {
             glm::mat4 inv_view_proj;
             glm::mat4 view_proj;
             glm::vec4 camera_pos;
-            glm::vec4 screen_size;
+            glm::vec4 screen_size;   // .z = frame_idx as float
+            glm::mat4 prev_view_proj;
         } ssr_u = {};
-        ssr_u.inv_view_proj = glm::inverse(proj * view);
-        ssr_u.view_proj     = proj * view;
-        glm::mat4 inv_view  = glm::inverse(view);
-        ssr_u.camera_pos    = glm::vec4(inv_view[3][0], inv_view[3][1], inv_view[3][2], 0.0f);
-        ssr_u.screen_size   = glm::vec4((float)offscreen_width_, (float)offscreen_height_, 0.0f, 0.0f);
+        ssr_u.inv_view_proj  = glm::inverse(proj * view);
+        ssr_u.view_proj      = proj * view;
+        glm::mat4 inv_view   = glm::inverse(view);
+        ssr_u.camera_pos     = glm::vec4(inv_view[3][0], inv_view[3][1], inv_view[3][2], 0.0f);
+        ssr_u.screen_size    = glm::vec4((float)offscreen_width_, (float)offscreen_height_,
+                                         (float)(frame_idx_ & 0xFFFFu), 0.0f);
+        ssr_u.prev_view_proj = prev_view_proj_;
         wgpuQueueWriteBuffer(gpu_.queue, ssr_extra_buffer_, 0, &ssr_u, sizeof(ssr_u));
+        // Save current VP for next frame's TAA reprojection.
+        prev_view_proj_ = proj * view;
     }
 
     // ---- SSR composite pass: read scene_color_, write offscreen_color_ ----
@@ -2792,16 +3078,21 @@ void Engine::begin_frame() {
             }
             if (!ssr_composite_ready_) return;
 
-            WGPURenderPassColorAttachment catt = {};
-            catt.view       = offscreen_view_;
-            catt.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            catt.loadOp     = WGPULoadOp_Clear;
-            catt.storeOp    = WGPUStoreOp_Store;
-            catt.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+            WGPURenderPassColorAttachment catt[2] = {};
+            catt[0].view       = gpu_.ssr_color_view;
+            catt[0].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt[0].loadOp     = WGPULoadOp_Clear;
+            catt[0].storeOp    = WGPUStoreOp_Store;
+            catt[0].clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+            catt[1].view       = gpu_.ssr_mask_view;
+            catt[1].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt[1].loadOp     = WGPULoadOp_Clear;
+            catt[1].storeOp    = WGPUStoreOp_Store;
+            catt[1].clearValue = {0.0f, 0.0f, 0.0f, 1.0f};
 
             WGPURenderPassDescriptor cp = {};
-            cp.colorAttachmentCount   = 1;
-            cp.colorAttachments       = &catt;
+            cp.colorAttachmentCount   = 2;
+            cp.colorAttachments       = catt;
             cp.depthStencilAttachment = nullptr;
 
             WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &cp);
@@ -2810,6 +3101,51 @@ void Engine::begin_frame() {
             wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(rp);
             wgpuRenderPassEncoderRelease(rp);
+        });
+
+    // ---- TAA Resolve pass: read ssr_color + history, write offscreen + history ----
+    fg_.add_pass("taa_resolve",
+        /*reads=*/  { r_offscreen },
+        /*writes=*/ { r_offscreen },
+        [&](WGPUCommandEncoder enc) {
+            if (!taa_ready_ && taa_bgl_) {
+                taa_pipeline_ = make_taa_pipeline(gpu_.device, offscreen_format_, taa_bgl_);
+                if (taa_pipeline_) taa_ready_ = true;
+            }
+            if (!taa_ready_) return;
+
+            int curr_idx = taa_history_index_;
+            int prev_idx = 1 - taa_history_index_;
+
+            // Write to offscreen (color 0) and taa_history[prev] (color 1).
+            // Read from taa_history[curr] via the bind group.
+            WGPURenderPassColorAttachment catt[2] = {};
+            catt[0].view = offscreen_view_;
+            catt[0].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt[0].loadOp = WGPULoadOp_Clear;
+            catt[0].storeOp = WGPUStoreOp_Store;
+            catt[0].clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+
+            catt[1].view = gpu_.taa_history_view[prev_idx];
+            catt[1].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt[1].loadOp = WGPULoadOp_Clear;
+            catt[1].storeOp = WGPUStoreOp_Store;
+            catt[1].clearValue = {0.0f, 0.0f, 0.0f, 1.0f};
+
+            WGPURenderPassDescriptor cp = {};
+            cp.colorAttachmentCount = 2;
+            cp.colorAttachments = catt;
+            cp.depthStencilAttachment = nullptr;
+
+            WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &cp);
+            wgpuRenderPassEncoderSetPipeline(rp, taa_pipeline_);
+            wgpuRenderPassEncoderSetBindGroup(rp, 0, taa_bg_[curr_idx], 0, nullptr);
+            wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
+            wgpuRenderPassEncoderEnd(rp);
+            wgpuRenderPassEncoderRelease(rp);
+
+            // Swap history for next frame.
+            taa_history_index_ = prev_idx;
         });
 
     // ---- Execute ----
@@ -3341,9 +3677,9 @@ bool Engine::load_gltf(const char* utf8_path, std::string& err) {
         ground.aabb_max     = glm::vec3(cx + half_size, y, cz + half_size);
 
         Material gmat;
-        gmat.base_color = glm::vec4(0.02f, 0.02f, 0.02f, 1.0f);  // near-black
-        gmat.roughness  = 0.1f;   // smooth
-        gmat.metallic   = 1.0f;   // metal → strong Fresnel reflection
+        gmat.base_color = glm::vec4(0.02f, 0.02f, 0.02f, 1.0f);  // near black
+        gmat.roughness  = 0.05f;  // very smooth
+        gmat.metallic   = 0.0f;   // dielectric (glass), F0 = 0.04
         gmat.ao         = 1.0f;
         gmat.bind_group = scene_.materials[0].bind_group;  // reuse default bind group
 

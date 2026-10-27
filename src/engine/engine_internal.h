@@ -44,10 +44,19 @@ struct GpuContext {
     // Sampler for the composite pass to sample G-buffer textures.
     WGPUSampler gbuf_sampler = nullptr;
 
-    // Scene color (composite output, before SSR). Same format as offscreen_color_.
-    // SSR reads this, modifies, and writes to offscreen_color_.
+    // Scene color (composite output, before SSR).
     WGPUTexture     scene_color_tex  = nullptr;
     WGPUTextureView scene_color_view = nullptr;
+
+    // SSR output: color + mask. TAA reads both, denoises, writes to offscreen.
+    WGPUTexture     ssr_color_tex  = nullptr;
+    WGPUTextureView ssr_color_view = nullptr;
+    WGPUTexture     ssr_mask_tex   = nullptr;
+    WGPUTextureView ssr_mask_view  = nullptr;
+
+    // TAA history (ping-pong between two textures).
+    WGPUTexture     taa_history_tex[2]  = {};
+    WGPUTextureView taa_history_view[2] = {};
 
     // CSM (Cascaded Shadow Maps). 4 cascades, 1024x1024 each, Depth32Float.
     // shadow_view is a 2D array view (4 layers), used for sampling in composite.
@@ -220,13 +229,23 @@ private:
 
     // Shadow cascade matrices, computed per frame (light-space view-proj
     // per cascade, snapped to texel grid for stability).
-    // SSR composite (fullscreen passthrough for now).
+    // SSR composite.
     WGPURenderPipeline  ssr_composite_pipeline_  = nullptr;
     bool                ssr_composite_ready_     = false;
     WGPUBindGroupLayout ssr_scene_bgl_           = nullptr;
     WGPUBindGroup       ssr_scene_bg_            = nullptr;
     WGPUSampler         ssr_scene_sampler_       = nullptr;
-    WGPUBuffer          ssr_extra_buffer_        = nullptr;  // inv_view_proj + camera_pos
+    WGPUBuffer          ssr_extra_buffer_        = nullptr;
+
+    // TAA (SSR denoise).
+    WGPURenderPipeline  taa_pipeline_            = nullptr;
+    bool                taa_ready_               = false;
+    WGPUBindGroupLayout taa_bgl_                 = nullptr;
+    WGPUBindGroup       taa_bg_[2]               = {nullptr, nullptr};
+    WGPUBuffer          taa_extra_buffer_        = nullptr;
+    uint32_t            taa_history_index_       = 0;
+    glm::mat4           prev_view_proj_          = glm::mat4(1.0f);
+    uint32_t            frame_idx_               = 0;
 
     glm::mat4           shadow_view_proj_[4]   = {};
     // Cascade split ratios (near/far of the camera frustum that each cascade covers).
