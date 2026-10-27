@@ -225,6 +225,7 @@ private:
     WGPUBindGroupLayout ssr_scene_bgl_           = nullptr;
     WGPUBindGroup       ssr_scene_bg_            = nullptr;
     WGPUSampler         ssr_scene_sampler_       = nullptr;
+    WGPUBuffer          ssr_extra_buffer_        = nullptr;  // inv_view_proj + camera_pos
 
     glm::mat4           shadow_view_proj_[4]   = {};
     // Cascade split ratios (near/far of the camera frustum that each cascade covers).

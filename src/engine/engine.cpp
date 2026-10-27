@@ -81,6 +81,7 @@ void Engine::shutdown() {
     if (ssr_scene_bgl_)      { wgpuBindGroupLayoutRelease(ssr_scene_bgl_);         ssr_scene_bgl_      = nullptr; }
     if (ssr_composite_pipeline_) { wgpuRenderPipelineRelease(ssr_composite_pipeline_); ssr_composite_pipeline_ = nullptr; }
     if (ssr_scene_sampler_)  { wgpuSamplerRelease(ssr_scene_sampler_);             ssr_scene_sampler_  = nullptr; }
+    if (ssr_extra_buffer_)   { wgpuBufferRelease(ssr_extra_buffer_);                ssr_extra_buffer_   = nullptr; }
     ssr_composite_ready_ = false;
     if (composite_shadow_bg_)  { wgpuBindGroupRelease(composite_shadow_bg_);       composite_shadow_bg_  = nullptr; }
     if (composite_shadow_bgl_) { wgpuBindGroupLayoutRelease(composite_shadow_bgl_); composite_shadow_bgl_ = nullptr; }
@@ -570,7 +571,20 @@ bool Engine::init(const char* app_name,
             return false;
         }
 
-        WGPUBindGroupLayoutEntry e[2] = {};
+        // SSR extra uniforms: inv_view_proj (64) + camera_pos (16) = 80 bytes.
+        {
+            WGPUBufferDescriptor bd = {};
+            bd.size  = 160;  // inv_view_proj(64) + view_proj(64) + camera_pos(16) + screen_size(16)
+            bd.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+            ssr_extra_buffer_ = wgpuDeviceCreateBuffer(gpu_.device, &bd);
+            if (!ssr_extra_buffer_) {
+                err = "ssr extra buffer creation failed";
+                shutdown();
+                return false;
+            }
+        }
+
+        WGPUBindGroupLayoutEntry e[5] = {};
         e[0].binding = 0;
         e[0].visibility = WGPUShaderStage_Fragment;
         e[0].texture.sampleType = WGPUTextureSampleType_Float;
@@ -578,9 +592,25 @@ bool Engine::init(const char* app_name,
         e[1].binding = 1;
         e[1].visibility = WGPUShaderStage_Fragment;
         e[1].sampler.type = WGPUSamplerBindingType_Filtering;
+        // Depth (for raymarch hit-test)
+        e[2].binding = 2;
+        e[2].visibility = WGPUShaderStage_Fragment;
+        e[2].texture.sampleType = WGPUTextureSampleType_Depth;
+        e[2].texture.viewDimension = WGPUTextureViewDimension_2D;
+        // Normal (G-buffer channel, for reflection direction)
+        e[3].binding = 3;
+        e[3].visibility = WGPUShaderStage_Fragment;
+        e[3].texture.sampleType = WGPUTextureSampleType_Float;
+        e[3].texture.viewDimension = WGPUTextureViewDimension_2D;
+        // Extra uniforms
+        e[4].binding = 4;
+        e[4].visibility = WGPUShaderStage_Fragment;
+        e[4].buffer.type = WGPUBufferBindingType_Uniform;
+        e[4].buffer.hasDynamicOffset = false;
+        e[4].buffer.minBindingSize = 160;
 
         WGPUBindGroupLayoutDescriptor bgl = {};
-        bgl.entryCount = 2;
+        bgl.entryCount = 5;
         bgl.entries = e;
         ssr_scene_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &bgl);
         if (!ssr_scene_bgl_) {
@@ -589,15 +619,23 @@ bool Engine::init(const char* app_name,
             return false;
         }
 
-        WGPUBindGroupEntry be[2] = {};
+        WGPUBindGroupEntry be[5] = {};
         be[0].binding = 0;
         be[0].textureView = gpu_.scene_color_view;
         be[1].binding = 1;
         be[1].sampler = ssr_scene_sampler_;
+        be[2].binding = 2;
+        be[2].textureView = gpu_.depth_view;
+        be[3].binding = 3;
+        be[3].textureView = gpu_.gbuf_normal_view;
+        be[4].binding = 4;
+        be[4].buffer = ssr_extra_buffer_;
+        be[4].offset = 0;
+        be[4].size = 160;
 
         WGPUBindGroupDescriptor bgd = {};
         bgd.layout = ssr_scene_bgl_;
-        bgd.entryCount = 2;
+        bgd.entryCount = 5;
         bgd.entries = be;
         ssr_scene_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
         if (!ssr_scene_bg_) {
@@ -605,7 +643,7 @@ bool Engine::init(const char* app_name,
             shutdown();
             return false;
         }
-        std::fprintf(stderr, "[engine] ssr composite resources ready\n");
+        std::fprintf(stderr, "[engine] ssr composite resources ready (5 bindings)\n");
     }
 
     // ---- CSM shadow map ----
@@ -2013,11 +2051,20 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
     WGPUDevice device, WGPUTextureFormat color_format,
     WGPUBindGroupLayout scene_bgl)
 {
-    // SSR-1: fullscreen passthrough. Reads scene_color_, outputs it unchanged.
-    // Later patches will add raymarching here.
+    // SSR-3: naive screen-space raymarch. Fixed steps, no HZB, no denoise.
     const char* wgsl = R"(
-        @group(0) @binding(0) var t_scene : texture_2d<f32>;
-        @group(0) @binding(1) var s_scene : sampler;
+        struct SsrExtra {
+            inv_view_proj : mat4x4<f32>,
+            view_proj     : mat4x4<f32>,
+            camera_pos    : vec4<f32>,
+            screen_size   : vec4<f32>,
+        };
+
+        @group(0) @binding(0) var t_scene  : texture_2d<f32>;
+        @group(0) @binding(1) var s_scene  : sampler;
+        @group(0) @binding(2) var t_depth  : texture_depth_2d;
+        @group(0) @binding(3) var t_normal : texture_2d<f32>;
+        @group(0) @binding(4) var<uniform> ssr : SsrExtra;
 
         struct VSOut {
             @builtin(position) clip : vec4<f32>,
@@ -2037,9 +2084,71 @@ static WGPURenderPipeline make_ssr_composite_pipeline(
             return out;
         }
 
+        fn oct_decode(e: vec2<f32>) -> vec3<f32> {
+            let n = vec3<f32>(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+            let t = clamp(-n.z, 0.0, 1.0);
+            return normalize(vec3<f32>(
+                n.xy + select(vec2<f32>(t), -vec2<f32>(t), n.xy >= vec2<f32>(0.0)),
+                n.z));
+        }
+
+        fn reconstruct_world(uv: vec2<f32>, depth_z: f32) -> vec3<f32> {
+            let ndc_z = depth_z * 2.0 - 1.0;
+            let ndc   = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+            let h     = ssr.inv_view_proj * vec4<f32>(ndc.x, ndc.y, ndc_z, 1.0);
+            return h.xyz / h.w;
+        }
+
         @fragment
         fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
-            return textureSample(t_scene, s_scene, in.uv);
+            let scene_col = textureSample(t_scene, s_scene, in.uv).rgb;
+
+            let dims = vec2<i32>(i32(ssr.screen_size.x), i32(ssr.screen_size.y));
+            let px   = vec2<i32>(i32(in.uv.x * f32(dims.x)), i32(in.uv.y * f32(dims.y)));
+            let depth_z = textureLoad(t_depth, px, 0);
+            if (depth_z > 0.9999) { return vec4<f32>(scene_col, 1.0); }
+
+            let world_pos = reconstruct_world(in.uv, depth_z);
+            let n_sample  = textureLoad(t_normal, px, 0);
+            let N         = oct_decode(n_sample.rg);
+            let V         = normalize(world_pos - ssr.camera_pos.xyz);
+            let R         = reflect(V, N);
+            if (dot(R, N) < 0.0) { return vec4<f32>(scene_col, 1.0); }
+
+            let NdotV = max(dot(-V, N), 0.001);
+            let F     = 0.04 + 0.96 * pow(1.0 - NdotV, 5.0);
+
+            let origin = world_pos + N * 0.02;
+            let step_size = 0.15;
+            var hit = false;
+            var hit_uv = in.uv;
+            for (var i = 0; i < 32; i++) {
+                let t = f32(i + 1) * step_size;
+                let P = origin + R * t;
+                let clip = ssr.view_proj * vec4<f32>(P, 1.0);
+                let ndc = clip.xyz / clip.w;
+                let ray_uv = vec2<f32>(ndc.x * 0.5 + 0.5,
+                                       1.0 - (ndc.y * 0.5 + 0.5));
+                let ray_depth = (ndc.z + 1.0) * 0.5;
+                if (ray_uv.x < 0.0 || ray_uv.x > 1.0 ||
+                    ray_uv.y < 0.0 || ray_uv.y > 1.0 ||
+                    ray_depth < 0.0 || ray_depth > 1.0) {
+                    continue;
+                }
+                let ray_px = vec2<i32>(i32(ray_uv.x * f32(dims.x)),
+                                        i32(ray_uv.y * f32(dims.y)));
+                let scene_depth = textureLoad(t_depth, ray_px, 0);
+                if (ray_depth > scene_depth && scene_depth < 0.9999) {
+                    hit_uv = ray_uv;
+                    hit = true;
+                    break;
+                }
+            }
+
+            if (!hit) { return vec4<f32>(scene_col, 1.0); }
+            let hit_col = textureSampleLevel(t_scene, s_scene, hit_uv, 0.0).rgb;
+            let out_col = mix(scene_col, hit_col, F * 0.8);
+            return vec4<f32>(out_col, 1.0);
         }
     )";
 
@@ -2585,6 +2694,22 @@ void Engine::begin_frame() {
             wgpuRenderPassEncoderEnd(rp);
             wgpuRenderPassEncoderRelease(rp);
         });
+
+    // Upload SSR extra uniforms.
+    if (ssr_extra_buffer_) {
+        struct SsrU {
+            glm::mat4 inv_view_proj;
+            glm::mat4 view_proj;
+            glm::vec4 camera_pos;
+            glm::vec4 screen_size;
+        } ssr_u = {};
+        ssr_u.inv_view_proj = glm::inverse(proj * view);
+        ssr_u.view_proj     = proj * view;
+        glm::mat4 inv_view  = glm::inverse(view);
+        ssr_u.camera_pos    = glm::vec4(inv_view[3][0], inv_view[3][1], inv_view[3][2], 0.0f);
+        ssr_u.screen_size   = glm::vec4((float)offscreen_width_, (float)offscreen_height_, 0.0f, 0.0f);
+        wgpuQueueWriteBuffer(gpu_.queue, ssr_extra_buffer_, 0, &ssr_u, sizeof(ssr_u));
+    }
 
     // ---- SSR composite pass: read scene_color_, write offscreen_color_ ----
     fg_.add_pass("ssr_composite",
