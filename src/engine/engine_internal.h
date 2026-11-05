@@ -48,15 +48,13 @@ struct GpuContext {
     WGPUTexture     scene_color_tex  = nullptr;
     WGPUTextureView scene_color_view = nullptr;
 
-    // SSR output: color + mask. TAA reads both, denoises, writes to offscreen.
-    WGPUTexture     ssr_color_tex  = nullptr;
-    WGPUTextureView ssr_color_view = nullptr;
-    WGPUTexture     ssr_mask_tex   = nullptr;
-    WGPUTextureView ssr_mask_view  = nullptr;
-
-    // TAA history (ping-pong between two textures).
-    WGPUTexture     taa_history_tex[2]  = {};
-    WGPUTextureView taa_history_view[2] = {};
+    // SDFGI: camera-centered 3D occupancy + color voxel grids (64^3, 0.5m/voxel).
+    WGPUTexture     sdf_texture       = nullptr;
+    WGPUTextureView sdf_view          = nullptr;
+    WGPUTexture     sdf_color_texture = nullptr;
+    WGPUTextureView sdf_color_view    = nullptr;
+    static constexpr uint32_t SDF_DIM = 64;
+    static constexpr float    SDF_VOXEL_SIZE = 1.0f;
 
     // CSM (Cascaded Shadow Maps). 4 cascades, 1024x1024 each, Depth32Float.
     // shadow_view is a 2D array view (4 layers), used for sampling in composite.
@@ -229,23 +227,18 @@ private:
 
     // Shadow cascade matrices, computed per frame (light-space view-proj
     // per cascade, snapped to texel grid for stability).
-    // SSR composite.
-    WGPURenderPipeline  ssr_composite_pipeline_  = nullptr;
-    bool                ssr_composite_ready_     = false;
-    WGPUBindGroupLayout ssr_scene_bgl_           = nullptr;
-    WGPUBindGroup       ssr_scene_bg_            = nullptr;
-    WGPUSampler         ssr_scene_sampler_       = nullptr;
-    WGPUBuffer          ssr_extra_buffer_        = nullptr;
+    // SDFGI composite bind group (group 3 of composite pipeline).
+    WGPUBindGroupLayout sdf_composite_bgl_ = nullptr;
+    WGPUBindGroup       sdf_composite_bg_  = nullptr;
 
-    // TAA (SSR denoise).
-    WGPURenderPipeline  taa_pipeline_            = nullptr;
-    bool                taa_ready_               = false;
-    WGPUBindGroupLayout taa_bgl_                 = nullptr;
-    WGPUBindGroup       taa_bg_[2]               = {nullptr, nullptr};
-    WGPUBuffer          taa_extra_buffer_        = nullptr;
-    uint32_t            taa_history_index_       = 0;
-    glm::mat4           prev_view_proj_          = glm::mat4(1.0f);
-    uint32_t            frame_idx_               = 0;
+    // SDFGI compute pipeline (depth + gbuf_albedo -> occupancy + color 3D).
+    WGPUComputePipeline sdf_convert_pipeline_  = nullptr;
+    WGPUBindGroupLayout sdf_convert_bgl_       = nullptr;
+    WGPUBindGroup       sdf_convert_bg_        = nullptr;
+    WGPUBuffer          sdf_extra_buffer_      = nullptr;
+    WGPUBuffer          sdf_sample_buffer_     = nullptr;
+    WGPUSampler         sdf_sampler_           = nullptr;
+    bool                sdf_pipelines_ready_   = false;
 
     glm::mat4           shadow_view_proj_[4]   = {};
     // Cascade split ratios (near/far of the camera frustum that each cascade covers).
