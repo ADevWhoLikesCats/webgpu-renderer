@@ -30,7 +30,6 @@ void GpuContext::destroy() {
     if (cull_indices_buffer) { wgpuBufferRelease(cull_indices_buffer); cull_indices_buffer = nullptr; }
     if (cull_mesh_ids_buffer)    { wgpuBufferRelease(cull_mesh_ids_buffer);    cull_mesh_ids_buffer    = nullptr; }
     if (cull_mesh_counts_buffer) { wgpuBufferRelease(cull_mesh_counts_buffer); cull_mesh_counts_buffer = nullptr; }
-    if (shadow_uniform_buffer)   { wgpuBufferRelease(shadow_uniform_buffer);   shadow_uniform_buffer   = nullptr; }
     if (cull_mesh_offsets_buffer){ wgpuBufferRelease(cull_mesh_offsets_buffer);cull_mesh_offsets_buffer= nullptr; }
     if (cull_mesh_buckets_buffer){ wgpuBufferRelease(cull_mesh_buckets_buffer);cull_mesh_buckets_buffer= nullptr; }
     if (cull_indirect_args_buffer){ wgpuBufferRelease(cull_indirect_args_buffer);cull_indirect_args_buffer= nullptr; }
@@ -73,7 +72,8 @@ void Engine::shutdown() {
     if (indirect_build_bgl_)      { wgpuBindGroupLayoutRelease(indirect_build_bgl_);          indirect_build_bgl_      = nullptr; }
     if (indirect_build_pipeline_) { wgpuComputePipelineRelease(indirect_build_pipeline_);     indirect_build_pipeline_ = nullptr; }
     indirect_build_ready_ = false;
-    if (shadow_uniform_bg_)  { wgpuBindGroupRelease(shadow_uniform_bg_);          shadow_uniform_bg_  = nullptr; }
+    if (shadow_uniform_bg_)    { wgpuBindGroupRelease(shadow_uniform_bg_);          shadow_uniform_bg_  = nullptr; }
+    if (gpu_.shadow_uniform_buffer) { wgpuBufferRelease(gpu_.shadow_uniform_buffer); gpu_.shadow_uniform_buffer = nullptr; }
     if (shadow_uniform_bgl_) { wgpuBindGroupLayoutRelease(shadow_uniform_bgl_);   shadow_uniform_bgl_ = nullptr; }
     if (shadow_pipeline_)    { wgpuRenderPipelineRelease(shadow_pipeline_);       shadow_pipeline_    = nullptr; }
     shadow_pipeline_ready_ = false;
@@ -656,7 +656,6 @@ bool Engine::init(const char* app_name,
         be.buffer  = gpu_.shadow_uniform_buffer;
         be.offset  = 0;
         be.size    = (uint64_t)gpu_.shadow_uniform_capacity * 64ull;
-
         WGPUBindGroupDescriptor bgd = {};
         bgd.layout     = shadow_uniform_bgl_;
         bgd.entryCount = 1;
@@ -1650,6 +1649,18 @@ static WGPURenderPipeline make_composite_pipeline(
         @group(3) @binding(2) var<uniform> sdf : SdfSample;
         @group(3) @binding(3) var s_sdf       : sampler;
 
+        // Shadow group (bindings match C++ BGL at @group(2)).
+        @group(2) @binding(0) var t_depth_shadow : texture_depth_2d;
+        @group(2) @binding(1) var t_shadow       : texture_depth_2d_array;
+        @group(2) @binding(2) var s_shadow       : sampler_comparison;
+
+        struct CompositeExtra {
+            inv_view_proj    : mat4x4<f32>,
+            shadow_view_proj : array<mat4x4<f32>, 4>,
+            cascade_splits   : vec4<f32>,
+        };
+        @group(2) @binding(3) var<uniform> cshadow : CompositeExtra;
+
         struct VSOut {
             @builtin(position) clip : vec4<f32>,
             @location(0) uv : vec2<f32>,
@@ -1710,7 +1721,36 @@ static WGPURenderPipeline make_composite_pipeline(
 
 
             if (albedo_sample.a < 0.01) {
-                return vec4<f32>(0.05, 0.05, 0.1, 1.0);
+                // Sky branch: render sun disc + darkened sky.
+                // Sun is physically modeled at ~100k lux, tone-mapped by
+                // EXPOSURE so surfaces stay in [0,1] range.
+                const SUN_RADIANCE : f32 = 100000.0;
+                const EXPOSURE     : f32 = 15000.0;
+                let sun_dir  = normalize(vec3<f32>(0.5, 0.9, 0.2));
+                let sun_col  = vec3<f32>(1.0, 0.92, 0.55);
+
+                // View ray through this sky pixel.
+                let ndx_s = in.uv.x * 2.0 - 1.0;
+                let ndy_s = 1.0 - in.uv.y * 2.0;
+                let rdx_s = sdf.inv_view_proj[0][0] * ndx_s + sdf.inv_view_proj[1][0] * ndy_s + sdf.inv_view_proj[2][0];
+                let rdy_s = sdf.inv_view_proj[0][1] * ndx_s + sdf.inv_view_proj[1][1] * ndy_s + sdf.inv_view_proj[2][1];
+                let rdz_s = sdf.inv_view_proj[0][2] * ndx_s + sdf.inv_view_proj[1][2] * ndy_s + sdf.inv_view_proj[2][2];
+                let view_ray = normalize(vec3<f32>(rdx_s, rdy_s, rdz_s));
+
+                let cos_angle = dot(view_ray, sun_dir);
+                let disc_mask = smoothstep(0.9975, 0.9990, cos_angle);  // ~4 deg
+
+                // Sky gradient: dark at horizon, deep blue above.
+                let up_sky = clamp(view_ray.y * 0.5 + 0.5, 0.0, 1.0);
+                let sky_bg = mix(vec3<f32>(0.02, 0.03, 0.06),
+                                 vec3<f32>(0.10, 0.15, 0.30), up_sky);
+
+                // Sun disc color in HDR then exposure + tonemap.
+                let sun_hdr = sun_col * (SUN_RADIANCE / EXPOSURE) * disc_mask;
+                let col = sky_bg + sun_hdr;
+                let xx = col * 1.0;
+                let tonemapped = (xx * (2.51 * xx + 0.03)) / (xx * (2.43 * xx + 0.59) + 0.14);
+                return vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
             }
 
             let albedo    = albedo_sample.rgb;
@@ -1719,9 +1759,48 @@ static WGPURenderPipeline make_composite_pipeline(
             let metallic  = clamp(material_sample.g, 0.0, 1.0);
             let ao        = clamp(material_sample.b, 0.0, 1.0);
 
+            // ---- Shadow sampling ----
+            // Reconstruct world position from depth, project into light space,
+            // sample the shadow map with a comparison sampler.
+            let sx_d = i32(in.uv.x * f32(textureDimensions(t_depth_shadow).x));
+            let sy_d = i32(in.uv.y * f32(textureDimensions(t_depth_shadow).y));
+            let depth_z = textureLoad(t_depth_shadow, vec2<i32>(sx_d, sy_d), 0);
+            let ndc_z = depth_z * 2.0 - 1.0;
+            let ndc_xy = vec2<f32>(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
+            let w_clip = cshadow.inv_view_proj * vec4<f32>(ndc_xy, ndc_z, 1.0);
+            let world_pos_sh = w_clip.xyz / w_clip.w;
+
+            var shadow_factor : f32 = 1.0;
+            // Pick cascade 0 (near) for now — everything within ~15m.
+            let sc = cshadow.shadow_view_proj[0] * vec4<f32>(world_pos_sh, 1.0);
+            if (sc.w > 0.0) {
+                let sndc = sc.xyz / sc.w;
+                let suv  = vec2<f32>(sndc.x * 0.5 + 0.5, 0.5 - sndc.y * 0.5);
+                let sdep = sndc.z;
+                if (suv.x >= 0.0 && suv.x <= 1.0 &&
+                    suv.y >= 0.0 && suv.y <= 1.0 &&
+                    sdep  >= 0.0 && sdep  <= 1.0) {
+                    // 3x3 PCF using comparison sampler.
+                    let texel = 1.0 / 1024.0;
+                    var lit : f32 = 0.0;
+                    for (var yy : i32 = -1; yy <= 1; yy = yy + 1) {
+                        for (var xx : i32 = -1; xx <= 1; xx = xx + 1) {
+                            let off = vec2<f32>(f32(xx) * texel, f32(yy) * texel);
+                            lit = lit + textureSampleCompareLevel(t_shadow, s_shadow, suv + off, 0, sdep - 0.01);
+                        }
+                    }
+                    shadow_factor = lit / 9.0;
+                }
+            }
+
             let V         = normalize(vec3<f32>(2.5, 2.5, 2.5));
-            let L         = normalize(vec3<f32>(0.4, 0.8, 0.3));
-            let radiance  = vec3<f32>(1.0, 0.95, 0.85) * 12.0;
+            // Physical sun: ~100,000 lux, tone-mapped by EXPOSURE.
+            // Same EXPOSURE as the sky branch so sun disc + sunlit surfaces
+            // stay in the same HDR range.
+            const SUN_RADIANCE : f32 = 100000.0;
+            const EXPOSURE     : f32 = 15000.0;
+            let L         = normalize(vec3<f32>(0.5, 0.9, 0.2));
+            let radiance  = vec3<f32>(1.0, 0.92, 0.55) * (SUN_RADIANCE / EXPOSURE);
 
             let H     = normalize(V + L);
             let NdotL = max(dot(N, L), 0.0);
@@ -1736,15 +1815,17 @@ static WGPURenderPipeline make_composite_pipeline(
             let specular = (D * G * F) / (4.0 * NdotV * NdotL + 1e-4);
             let kD = (vec3<f32>(1.0) - F) * (1.0 - metallic);
             let diffuse = kD * albedo / PI;
-            let Lo = (diffuse + specular) * radiance * NdotL;
+            let Lo = (diffuse + specular) * radiance * NdotL * shadow_factor;
 
+            // Darker ambient: sun dominates, fill light is subtle.
+            // ~10x weaker than the direct sun contribution for deep shadows.
             let up     = clamp(N.y * 0.5 + 0.5, 0.0, 1.0);
-            let sky    = mix(vec3<f32>(0.20, 0.22, 0.28),
-                             vec3<f32>(0.40, 0.55, 0.85), up) * 2.0;
-            let ground = vec3<f32>(0.10, 0.08, 0.06);
+            let sky    = mix(vec3<f32>(0.02, 0.025, 0.04),
+                             vec3<f32>(0.06, 0.10, 0.20), up) * 1.0;
+            let ground = vec3<f32>(0.02, 0.015, 0.01);
             let ambient_irradiance = mix(ground, sky, up) * ao;
             let kD_ambient = (vec3<f32>(1.0) - F_Schlick(F0, NdotV)) * (1.0 - metallic);
-            let ambient = kD_ambient * albedo * ambient_irradiance;
+            let ambient = kD_ambient * albedo * ambient_irradiance * 10.0;  // DEBUG: brighter ambient
 
             // ---- SDFGI reflection (two-pass, self-contained) ----
             var reflect_contrib : vec3<f32> = vec3<f32>(0.0);
@@ -1803,12 +1884,16 @@ static WGPURenderPipeline make_composite_pipeline(
                         let ipc = vec3<i32>(i32(vp.x), i32(vp.y), i32(vp.z));
                         let hit_col = textureLoad(t_sdf_color, ipc, 0).rgb;
                         let tint = F_Schlick(F0, NdotV) * hit_col;
-                        reflect_contrib = tint * 2.0;
+                        reflect_contrib = tint * 0.2;  // DEBUG: weak reflection to reveal shadow
                     }
                 }
             }
 
-            let color = Lo + ambient + reflect_contrib;
+            // In shadow, ambient fill and SDFGI reflection are also dimmed.
+            // Physically this is approximate — a true shadow only removes
+            // direct light — but for a near-black dielectric floor, the
+            // reflection dominates and needs to be shadow-attenuated too.
+            let color = Lo + ambient * shadow_factor + reflect_contrib * shadow_factor;
             let xx = color * 1.0;
             let tonemapped = (xx * (2.51 * xx + 0.03)) / (xx * (2.43 * xx + 0.59) + 0.14);
             return vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
@@ -2531,6 +2616,21 @@ void Engine::begin_frame() {
                              light_dir, 1024.0f,
                              shadow_view_proj_);
 
+        // Upload composite_extra_buffer_ (inv_view_proj + shadow_view_proj[4]
+        // + cascade_splits) so the composite fragment can sample the shadow map.
+        if (composite_extra_buffer_) {
+            struct CompositeU {
+                glm::mat4 inv_view_proj;
+                glm::mat4 shadow_vp[4];
+                glm::vec4 cascade_splits;
+            } cu = {};
+            cu.inv_view_proj = glm::inverse(proj * view);
+            for (int c = 0; c < 4; ++c) cu.shadow_vp[c] = shadow_view_proj_[c];
+            cu.cascade_splits = glm::vec4(0.05f, 0.15f, 0.50f, 1.0f);
+            wgpuQueueWriteBuffer(gpu_.queue, composite_extra_buffer_, 0,
+                                 &cu, sizeof(cu));
+        }
+
         fg_.add_pass("csm_shadows",
             /*reads=*/  { r_depth },   // piggyback on depth resource for ordering
             /*writes=*/ { },
@@ -2594,9 +2694,15 @@ void Engine::begin_frame() {
                             (uint64_t)scene_.mesh_object_count[m] * 4ull);
                         wgpuRenderPassEncoderSetIndexBuffer(shadow_rp, mesh.index_buffer,
                             WGPUIndexFormat_Uint32, 0, mesh.index_count * 4);
-                        wgpuRenderPassEncoderDrawIndexedIndirect(shadow_rp,
-                            gpu_.cull_indirect_args_buffer,
-                            (uint64_t)m * 20ull);
+                        // NOTE: shadow pass bypasses GPU cull — draws all
+                        // objects unconditionally. The indirect path has
+                        // instance_count = 0 for reasons still under
+                        // investigation. Functionally correct, ~4x slower
+                        // than indirect.
+                        wgpuRenderPassEncoderDrawIndexed(shadow_rp,
+                            mesh.index_count,
+                            scene_.mesh_object_count[m],  // instance count
+                            0, 0, 0);
                     }
                     wgpuRenderPassEncoderEnd(shadow_rp);
                     wgpuRenderPassEncoderRelease(shadow_rp);

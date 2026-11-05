@@ -64,7 +64,7 @@ struct GpuContext {
 
     // Shadow-pass uniform buffer: one mat4 (mvp) per object, overwritten
     // per cascade (4 uploads per frame, one per cascade).
-    WGPUBuffer       shadow_uniform_buffer = nullptr;
+    WGPUBuffer        shadow_uniform_buffer = nullptr;
     uint32_t         shadow_uniform_capacity = 0;  // in objects
 
     // HZB (Hi-Z) depth pyramid. Mip 0 = converted depth buffer (R32Float),
@@ -223,7 +223,7 @@ private:
     WGPURenderPipeline  shadow_pipeline_       = nullptr;
     bool                shadow_pipeline_ready_ = false;
     WGPUBindGroupLayout shadow_uniform_bgl_    = nullptr;
-    WGPUBindGroup       shadow_uniform_bg_     = nullptr;
+    WGPUBindGroup       shadow_uniform_bg_  = nullptr;
 
     // Shadow cascade matrices, computed per frame (light-space view-proj
     // per cascade, snapped to texel grid for stability).
