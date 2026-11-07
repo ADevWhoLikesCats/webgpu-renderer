@@ -58,6 +58,10 @@ struct GpuContext {
     WGPUTextureView sdf_dist_view[2] = {nullptr, nullptr};
     WGPUTextureView sdf_dist_stor[2] = {nullptr, nullptr};
 
+    // Reflection temporal history (2x ping-pong, offscreen format).
+    WGPUTexture     refl_hist_tex[2]  = {};
+    WGPUTextureView refl_hist_view[2] = {};
+
     static constexpr uint32_t SDF_DIM = 128;
     static constexpr float    SDF_VOXEL_SIZE = 0.5f;
 
@@ -236,6 +240,7 @@ private:
     WGPUBindGroupLayout sdf_flood_bgl_         = nullptr;
     WGPUBindGroup       sdf_flood_bg_          = nullptr;
     bool                sdf_pipelines_ready_   = false;
+    uint32_t            refl_hist_index_        = 0;
 
     // Cascade split ratios (near/far of the camera frustum that each cascade covers).
     // Computed once, uploaded to composite.

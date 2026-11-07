@@ -109,6 +109,10 @@ void Engine::shutdown() {
     if (gpu_.sdf_color_texture) { wgpuTextureRelease(gpu_.sdf_color_texture);  gpu_.sdf_color_texture = nullptr; }
     if (gpu_.sdf_view)          { wgpuTextureViewRelease(gpu_.sdf_view);       gpu_.sdf_view = nullptr; }
     if (gpu_.sdf_texture)       { wgpuTextureRelease(gpu_.sdf_texture);        gpu_.sdf_texture = nullptr; }
+    for (int i = 0; i < 2; ++i) {
+        if (gpu_.refl_hist_view[i]) { wgpuTextureViewRelease(gpu_.refl_hist_view[i]); gpu_.refl_hist_view[i] = nullptr; }
+        if (gpu_.refl_hist_tex[i])  { wgpuTextureRelease(gpu_.refl_hist_tex[i]);     gpu_.refl_hist_tex[i]  = nullptr; }
+    }
     if (!initialized_) return;
     if (surface_.surface) { wgpuSurfaceRelease(surface_.surface); surface_.surface = nullptr; }
     gpu_.destroy();
@@ -910,11 +914,27 @@ bool Engine::init(const char* app_name,
             sdf_flood_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
         }
 
-            std::fprintf(stderr, "[engine] SDFGI ready (64^3 R32Float + RGBA8, 0.5m/voxel)\n");
+            // ---- Reflection history ping-pong ----
+        {
+            WGPUTextureDescriptor td = {};
+            td.dimension     = WGPUTextureDimension_2D;
+            td.size          = { offscreen_width_, offscreen_height_, 1 };
+            td.format        = WGPUTextureFormat_RGBA16Float;
+            td.mipLevelCount = 1;
+            td.sampleCount   = 1;
+            td.usage         = WGPUTextureUsage_TextureBinding |
+                               WGPUTextureUsage_RenderAttachment;
+            for (int i = 0; i < 2; ++i) {
+                gpu_.refl_hist_tex[i]  = wgpuDeviceCreateTexture(gpu_.device, &td);
+                gpu_.refl_hist_view[i] = wgpuTextureCreateView(gpu_.refl_hist_tex[i], nullptr);
+            }
+        }
+
+                std::fprintf(stderr, "[engine] SDFGI ready (64^3 R32Float + RGBA8, 0.5m/voxel)\n");
     }
     // Composite-side SDF BGL (group 3): t_sdf, t_sdf_color, sdf_sample uniform, sampler.
         {
-            WGPUBindGroupLayoutEntry se[6] = {};
+            WGPUBindGroupLayoutEntry se[7] = {};
             se[0].binding = 0; se[0].visibility = WGPUShaderStage_Fragment;
             se[0].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
             se[0].texture.viewDimension = WGPUTextureViewDimension_3D;
@@ -932,24 +952,28 @@ bool Engine::init(const char* app_name,
             se[5].binding = 5; se[5].visibility = WGPUShaderStage_Fragment;
             se[5].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
             se[5].texture.viewDimension = WGPUTextureViewDimension_3D;
+            se[6].binding = 6; se[6].visibility = WGPUShaderStage_Fragment;
+            se[6].texture.sampleType = WGPUTextureSampleType_Float;
+            se[6].texture.viewDimension = WGPUTextureViewDimension_2D;
 
             WGPUBindGroupLayoutDescriptor sbgl = {};
-            sbgl.entryCount = 6; sbgl.entries = se;
+            sbgl.entryCount = 7; sbgl.entries = se;
             sdf_composite_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu_.device, &sbgl);
             if (!sdf_composite_bgl_) { err = "sdf composite BGL failed"; shutdown(); return false; }
 
             // Bind group: sample buffer, occupancy, color, sampler.
-            WGPUBindGroupEntry sbe[6] = {};
+            WGPUBindGroupEntry sbe[7] = {};
             sbe[0].binding = 0; sbe[0].textureView = gpu_.sdf_view;
             sbe[1].binding = 1; sbe[1].textureView = gpu_.sdf_color_view;
             sbe[2].binding = 2; sbe[2].buffer = sdf_sample_buffer_; sbe[2].offset = 0; sbe[2].size = 176;
             sbe[3].binding = 3; sbe[3].sampler = sdf_sampler_;
             sbe[4].binding = 4; sbe[4].textureView = gpu_.depth_view;
             sbe[5].binding = 5; sbe[5].textureView = gpu_.sdf_dist_view[0];
+            sbe[6].binding = 6; sbe[6].textureView = gpu_.refl_hist_view[0];
 
             WGPUBindGroupDescriptor sbg = {};
             sbg.layout = sdf_composite_bgl_;
-            sbg.entryCount = 6; sbg.entries = sbe;
+            sbg.entryCount = 7; sbg.entries = sbe;
             sdf_composite_bg_ = wgpuDeviceCreateBindGroup(gpu_.device, &sbg);
             if (!sdf_composite_bg_) { err = "sdf composite BG failed"; shutdown(); return false; }
         }
@@ -1464,6 +1488,7 @@ static WGPURenderPipeline make_composite_pipeline(
         @group(2) @binding(3) var s_sdf       : sampler;
         @group(2) @binding(4) var t_depth_comp : texture_depth_2d;
         @group(2) @binding(5) var t_sdf_dist  : texture_3d<f32>;
+        @group(2) @binding(6) var t_refl_hist : texture_2d<f32>;
 
 
         struct VSOut {
@@ -1518,8 +1543,13 @@ static WGPURenderPipeline make_composite_pipeline(
             return F0 + (vec3<f32>(1.0) - F0) * pow(1.0 - cosTheta, 5.0);
         }
 
+        struct CompFSOut {
+            @location(0) color  : vec4<f32>,
+            @location(1) refl   : vec4<f32>,
+        };
+
         @fragment
-        fn fs_main(in : VSOut) -> @location(0) vec4<f32> {
+        fn fs_main(in : VSOut) -> CompFSOut {
             let albedo_sample   = textureSample(t_albedo,   s_gbuf, in.uv);
             let normal_sample   = textureSample(t_normal,   s_gbuf, in.uv);
             let material_sample = textureSample(t_material, s_gbuf, in.uv);
@@ -1555,7 +1585,7 @@ static WGPURenderPipeline make_composite_pipeline(
                 let col = sky_bg + sun_hdr;
                 let xx = col * 1.0;
                 let tonemapped = (xx * (2.51 * xx + 0.03)) / (xx * (2.43 * xx + 0.59) + 0.14);
-                return vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+                var sky_out : CompFSOut; sky_out.color = vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0); sky_out.refl = vec4<f32>(0.0, 0.0, 0.0, 1.0); return sky_out;
             }
 
             let albedo    = albedo_sample.rgb;
@@ -1703,10 +1733,22 @@ static WGPURenderPipeline make_composite_pipeline(
             let is_blue_emissive = (albedo.b > 0.7 && albedo.r < 0.3 && albedo.g < 0.6);
             let emissive = select(vec3<f32>(0.0), albedo * 50.0, is_blue_emissive);
 
+            // Reflection temporal blend: mix with last frame's history.
+            let px_refl = vec2<i32>(i32(in.uv.x * f32(textureDimensions(t_refl_hist).x)),
+                                    i32(in.uv.y * f32(textureDimensions(t_refl_hist).y)));
+            let prev_refl = textureLoad(t_refl_hist, px_refl, 0).rgb;
+            // 25% new, 75% history — 4-frame average. Slow drift on camera orbit
+            // is acceptable for a soft reflection; hard ghost would need reprojection.
+            reflect_contrib = mix(prev_refl, reflect_contrib, 0.35);
+
             let color = Lo + ambient + reflect_contrib + emissive;
             let xx = color * 1.0;
             let tonemapped = (xx * (2.51 * xx + 0.03)) / (xx * (2.43 * xx + 0.59) + 0.14);
-            return vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+            var out : CompFSOut;
+            out.color = vec4<f32>(clamp(tonemapped, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+            // Store untonemapped reflection for next frame.
+            out.refl = vec4<f32>(reflect_contrib, 1.0);
+            return out;
         }
     )";
 
@@ -1720,16 +1762,18 @@ static WGPURenderPipeline make_composite_pipeline(
     WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &smd);
     if (!mod) { std::fprintf(stderr, "[engine] PBR composite shader failed\n"); return nullptr; }
 
-    WGPUColorTargetState ct = {};
-    ct.format    = color_format;
-    ct.writeMask = WGPUColorWriteMask_All;
+    WGPUColorTargetState cts[2] = {};
+    cts[0].format    = color_format;
+    cts[0].writeMask = WGPUColorWriteMask_All;
+    cts[1].format    = WGPUTextureFormat_RGBA16Float;
+    cts[1].writeMask = WGPUColorWriteMask_All;
 
     WGPUFragmentState fs = {};
     fs.module      = mod;
     fs.entryPoint.data   = "fs_main";
     fs.entryPoint.length = 7;
-    fs.targetCount = 1;
-    fs.targets     = &ct;
+    fs.targetCount = 2;
+    fs.targets     = cts;
 
     WGPUVertexState vs = {};
     vs.module      = mod;
@@ -2801,26 +2845,56 @@ void Engine::begin_frame() {
         /*reads=*/  { r_albedo, r_normal, r_material, r_uniform },
         /*writes=*/ { r_offscreen },
         [&](WGPUCommandEncoder enc) {
-            WGPURenderPassColorAttachment catt = {};
-            catt.view       = offscreen_view_;        // composite -> offscreen (SSR removed)
-            catt.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-            catt.loadOp     = WGPULoadOp_Clear;
-            catt.storeOp    = WGPUStoreOp_Store;
-            catt.clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+            // Ping-pong: read from refl_hist_view[curr], write to refl_hist_view[next].
+            int curr = (int)refl_hist_index_;
+            int next = 1 - curr;
+
+            // Rebuild composite BG with the current history view.
+            WGPUBindGroupEntry be[7] = {};
+            be[0].binding = 0; be[0].textureView = gpu_.sdf_view;
+            be[1].binding = 1; be[1].textureView = gpu_.sdf_color_view;
+            be[2].binding = 2; be[2].buffer = sdf_sample_buffer_; be[2].offset = 0; be[2].size = 176;
+            be[3].binding = 3; be[3].sampler = sdf_sampler_;
+            be[4].binding = 4; be[4].textureView = gpu_.depth_view;
+            be[5].binding = 5; be[5].textureView = gpu_.sdf_dist_view[0];
+            be[6].binding = 6; be[6].textureView = gpu_.refl_hist_view[curr];
+            WGPUBindGroupDescriptor bgd = {};
+            bgd.layout = sdf_composite_bgl_;
+            bgd.entryCount = 7;
+            bgd.entries = be;
+            WGPUBindGroup frame_bg = wgpuDeviceCreateBindGroup(gpu_.device, &bgd);
+
+            WGPURenderPassColorAttachment catt[2] = {};
+            catt[0].view       = offscreen_view_;
+            catt[0].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt[0].loadOp     = WGPULoadOp_Clear;
+            catt[0].storeOp    = WGPUStoreOp_Store;
+            catt[0].clearValue = {0.05f, 0.05f, 0.1f, 1.0f};
+
+            catt[1].view       = gpu_.refl_hist_view[next];
+            catt[1].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+            catt[1].loadOp     = WGPULoadOp_Clear;
+            catt[1].storeOp    = WGPUStoreOp_Store;
+            catt[1].clearValue = {0.0f, 0.0f, 0.0f, 1.0f};
 
             WGPURenderPassDescriptor cp = {};
-            cp.colorAttachmentCount   = 1;
-            cp.colorAttachments       = &catt;
+            cp.colorAttachmentCount   = 2;
+            cp.colorAttachments       = catt;
             cp.depthStencilAttachment = nullptr;
 
             WGPURenderPassEncoder rp = wgpuCommandEncoderBeginRenderPass(enc, &cp);
             wgpuRenderPassEncoderSetPipeline(rp, composite_pipeline_);
             wgpuRenderPassEncoderSetBindGroup(rp, 0, gpu_.uniform_bind_group, 0, nullptr);
             wgpuRenderPassEncoderSetBindGroup(rp, 1, composite_bg_, 0, nullptr);
-            wgpuRenderPassEncoderSetBindGroup(rp, 2, sdf_composite_bg_, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(rp, 2, frame_bg, 0, nullptr);
             wgpuRenderPassEncoderDraw(rp, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(rp);
             wgpuRenderPassEncoderRelease(rp);
+
+            wgpuBindGroupRelease(frame_bg);
+
+            // Swap for next frame.
+            refl_hist_index_ = (uint32_t)next;
         });
 
 
