@@ -53,19 +53,15 @@ struct GpuContext {
     WGPUTextureView sdf_view          = nullptr;
     WGPUTexture     sdf_color_texture = nullptr;
     WGPUTextureView sdf_color_view    = nullptr;
-    static constexpr uint32_t SDF_DIM = 64;
-    static constexpr float    SDF_VOXEL_SIZE = 1.0f;
+    // Distance field ping-pong (jump-flood needs separate read/write).
+    WGPUTexture     sdf_dist_tex[2]  = {nullptr, nullptr};
+    WGPUTextureView sdf_dist_view[2] = {nullptr, nullptr};
+    WGPUTextureView sdf_dist_stor[2] = {nullptr, nullptr};
 
-    // CSM (Cascaded Shadow Maps). 4 cascades, 1024x1024 each, Depth32Float.
-    // shadow_view is a 2D array view (4 layers), used for sampling in composite.
-    WGPUTexture      shadow_map   = nullptr;
-    WGPUTextureView  shadow_view  = nullptr;
-    WGPUSampler      shadow_sampler = nullptr;
+    static constexpr uint32_t SDF_DIM = 128;
+    static constexpr float    SDF_VOXEL_SIZE = 0.5f;
 
-    // Shadow-pass uniform buffer: one mat4 (mvp) per object, overwritten
-    // per cascade (4 uploads per frame, one per cascade).
-    WGPUBuffer        shadow_uniform_buffer = nullptr;
-    uint32_t         shadow_uniform_capacity = 0;  // in objects
+
 
     // HZB (Hi-Z) depth pyramid. Mip 0 = converted depth buffer (R32Float),
     // mips 1..N = hierarchically downsampled minimum. Used by SSR/SSAO/SSGI.
@@ -219,11 +215,6 @@ private:
     WGPURenderPipeline geometry_pipeline_ = nullptr;
     bool               geometry_pipeline_ready_ = false;
 
-    // CSM shadow pipeline (depth-only, reads from shadow_uniform_buffer).
-    WGPURenderPipeline  shadow_pipeline_       = nullptr;
-    bool                shadow_pipeline_ready_ = false;
-    WGPUBindGroupLayout shadow_uniform_bgl_    = nullptr;
-    WGPUBindGroup       shadow_uniform_bg_  = nullptr;
 
     // Shadow cascade matrices, computed per frame (light-space view-proj
     // per cascade, snapped to texel grid for stability).
@@ -238,16 +229,17 @@ private:
     WGPUBuffer          sdf_extra_buffer_      = nullptr;
     WGPUBuffer          sdf_sample_buffer_     = nullptr;
     WGPUSampler         sdf_sampler_           = nullptr;
+    WGPUComputePipeline sdf_init_pipeline_     = nullptr;
+    WGPUBindGroupLayout sdf_init_bgl_          = nullptr;
+    WGPUBindGroup       sdf_init_bg_           = nullptr;
+    WGPUComputePipeline sdf_flood_pipeline_    = nullptr;
+    WGPUBindGroupLayout sdf_flood_bgl_         = nullptr;
+    WGPUBindGroup       sdf_flood_bg_          = nullptr;
     bool                sdf_pipelines_ready_   = false;
 
-    glm::mat4           shadow_view_proj_[4]   = {};
     // Cascade split ratios (near/far of the camera frustum that each cascade covers).
     // Computed once, uploaded to composite.
 
-    // Composite shadow bind group (group 2): depth + shadow map + sampler + extra uniforms.
-    WGPUBindGroupLayout composite_shadow_bgl_ = nullptr;
-    WGPUBindGroup       composite_shadow_bg_  = nullptr;
-    WGPUBuffer          composite_extra_buffer_ = nullptr;
 
     // Composite pipeline (reads G-buffer, writes final color).
     WGPURenderPipeline  composite_pipeline_ = nullptr;
